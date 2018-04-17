@@ -38,9 +38,11 @@ public class MainActivity extends AppCompatActivity {
 
 
             long millis = expirationTime - System.currentTimeMillis();
+
             long minutes = millis/60000;
             long seconds = millis/1000 - (minutes*60); // Remainder
-
+            String message = String.format("%sm %ss left", minutes, seconds);
+            logEntry(message);
             if (millis <= 0) {
                 timerHandler.removeCallbacks(timerRunnable);
                 if (ringtone.isPlaying() == false) {
@@ -48,11 +50,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else {
 
-                Calendar calendar = Calendar.getInstance();
-                SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                String current = String.format("%s: %sm %ss left", format.format(calendar.getTime()), minutes, seconds);
-                System.arraycopy(log, 0, log, 1, 4);
-                log[0] = current;
+
                 String text = "";
                 for (int i = 4; i >= 0; i--) {
                     text = String.format("%s\n%s", log[i], text);
@@ -69,6 +67,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
 
+        logEntry("activity created");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         timerTextView = findViewById(R.id.main_activity_view);
@@ -102,19 +101,25 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onPause() {
+        logEntry("activity paused");
         super.onPause();
     }
 
     @Override
     public void onResume() {
+        logEntry("activity resumed");
         super.onResume();
+
     }
 
+    private void logEntry(String message) {
 
-
-
-
-
+        Calendar calendar = Calendar.getInstance();
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        String entry = String.format("%s: %s", format.format(calendar.getTime()), message);
+        System.arraycopy(log, 0, log, 1, 4);
+        log[0] = entry;
+    }
 
 
 }
