@@ -18,7 +18,7 @@ import java.util.Calendar;
 public class MainActivity extends AppCompatActivity {
 
 
-    private static final long INTERVAL = 300000; // 5 minutes
+    private static final long INTERVAL = 3600000; // One hour
 
 
     TextView timerTextView;
