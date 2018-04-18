@@ -2,6 +2,8 @@ package org.maialinux.oldgoatnewtricks;
 
 
 
+import android.content.Context;
+import android.content.Intent;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -11,6 +13,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -23,12 +26,11 @@ public class MainActivity extends AppCompatActivity {
 
     TextView timerTextView;
     Button resetButton;
+    Uri ringtoneUri;
 
 
     public Handler timerHandler;
     long expirationTime;
-
-    Ringtone ringtone;
 
     String[] log = new String[5];
     
@@ -45,12 +47,12 @@ public class MainActivity extends AppCompatActivity {
             logEntry(message);
             if (millis <= 0) {
                 timerHandler.removeCallbacks(timerRunnable);
-                if (ringtone.isPlaying() == false) {
-                    ringtone.play();
-                }
+                Context context = getApplicationContext();
+                Intent startIntent = new Intent(context, RingToneService.class);
+                startIntent.putExtra("ringtone-uri", ringtoneUri);
+                context.startService(startIntent);
+
             } else {
-
-
                 String text = "";
                 for (int i = 4; i >= 0; i--) {
                     text = String.format("%s\n%s", log[i], text);
@@ -73,21 +75,20 @@ public class MainActivity extends AppCompatActivity {
         timerTextView = findViewById(R.id.main_activity_view);
         timerHandler = new Handler();
         expirationTime = System.currentTimeMillis() + INTERVAL;
+        ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
 
-        Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-        ringtone = RingtoneManager.getRingtone(getApplicationContext(), uri);
 
         timerRunnable.run();
+
 
 
         resetButton = findViewById(R.id.button);
         resetButton.setOnClickListener(new View.OnClickListener() {
                                            @Override
                                            public void onClick(View view) {
-                                               if (ringtone.isPlaying()) {
-                                                   ringtone.stop();
-
-                                               }
+                                               Context context = getApplicationContext();
+                                               Intent stopIntent = new Intent(context, RingToneService.class);
+                                               context.stopService(stopIntent);
                                                expirationTime = System.currentTimeMillis() + INTERVAL;
                                                timerHandler.removeCallbacks(timerRunnable);
                                                timerRunnable.run();
@@ -114,6 +115,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void logEntry(String message) {
 
+        Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
         Calendar calendar = Calendar.getInstance();
         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         String entry = String.format("%s: %s", format.format(calendar.getTime()), message);
