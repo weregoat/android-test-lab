@@ -18,9 +18,9 @@
         </activity>
 
         <service
-            android:name=".RingToneService">
-
-        </service>
+            android:name=".AlertService"
+            android:enabled="true"
+            android:exported="true"></service>
     </application>
 
 </manifest>
