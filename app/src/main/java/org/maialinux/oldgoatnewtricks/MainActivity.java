@@ -21,6 +21,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     private static final String TAG = "MainActivity";
+    public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.activity_broadcast";
 
 
     TextView timerTextView;
@@ -36,16 +37,15 @@ public class MainActivity extends AppCompatActivity {
         timerTextView = findViewById(R.id.main_activity_view);
         intent = new Intent(this, AlertService.class);
         startService(intent);
-        registerReceiver(broadcastReceiver, new IntentFilter(AlertService.ALERT_ACTION));
+        registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
 
         resetButton = findViewById(R.id.button);
         resetButton.setOnClickListener(new View.OnClickListener() {
                                            @Override
                                            public void onClick(View view) {
-                                               unregisterReceiver(broadcastReceiver);
-                                               stopService(intent);
-                                               startService(intent);
-                                               registerReceiver(broadcastReceiver, new IntentFilter(AlertService.ALERT_ACTION));
+                                               Intent intent = new Intent(MainActivity.BROADCAST_ACTION);
+                                               intent.putExtra(AlertService.RESET_MESSAGE, true);
+                                               sendBroadcast(intent);
                                            }
                                        }
 
@@ -56,13 +56,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onPause() {
         super.onPause();
-        unregisterReceiver(broadcastReceiver);
+        //unregisterReceiver(broadcastReceiver);
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        registerReceiver(broadcastReceiver, new IntentFilter(AlertService.ALERT_ACTION));
+        //registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
     }
 
     @Override
@@ -72,13 +72,14 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onStop() {
+        unregisterReceiver(broadcastReceiver);
         super.onStop();
     }
 
     @Override
     public void onDestroy() {
-        super.onDestroy();
         stopService(intent);
+        super.onDestroy();
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -93,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
         LocalDateTime now = new LocalDateTime();
         /* Use arraycopy to shift the elements of the array log */
         System.arraycopy(log, 0, log, 1, 4);
-        DateTimeFormatter formatter = ISODateTimeFormat.dateTime();
+        DateTimeFormatter formatter = ISODateTimeFormat.hourMinuteSecond();
         String logEntry = String.format("%s: %s\n", formatter.print(now), message);
         Log.d(TAG, message);
         log[0] = logEntry;
@@ -104,8 +105,7 @@ public class MainActivity extends AppCompatActivity {
                 text.append(log[i]);
             }
         }
-        TextView view = (TextView) findViewById(R.id.main_activity_view);
-        view.setText(text.toString());
+        timerTextView.setText(text.toString());
     }
 
 

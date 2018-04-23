@@ -1,15 +1,16 @@
 package org.maialinux.oldgoatnewtricks;
 
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
-import android.widget.TextView;
 import android.widget.Toast;
 
 
@@ -28,7 +29,8 @@ public class AlertService extends Service {
     private static final String WAKE_TIME = "09:00";
     private static final int MAX_ALERTS = 3;
     private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL/MAX_ALERTS);
-    public static final String ALERT_ACTION = "org.maialinux.oldgoatnewtricks.displaymessage";
+    public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.alert_service_broadcast";
+    public static final String RESET_MESSAGE = "reset";
 
 
 
@@ -82,7 +84,7 @@ public class AlertService extends Service {
                 if (alertCounts > 0) {
                     logEntry(String.format("Alert number %d", alertCounts), true);
                 }
-                logEntry(String.format("Next run in %d seconds", delay/1000), false);
+                logEntry(String.format("Next check in %d seconds", delay/1000), false);
 
                 timerHandler.postDelayed(this, delay);
             }
@@ -116,8 +118,8 @@ public class AlertService extends Service {
             sleepTime = LocalTime.parse(WAKE_TIME);
             wakeUpTime = LocalTime.parse(SLEEP_TIME);
         }
-        intent = new Intent(ALERT_ACTION);
-
+        intent = new Intent(BROADCAST_ACTION);
+        registerReceiver(broadcastReceiver, new IntentFilter(MainActivity.BROADCAST_ACTION));
     }
 
 
@@ -196,6 +198,19 @@ public class AlertService extends Service {
         logEntry("Service destroyed", true);
         this.stopRingtone();
         timerHandler.removeCallbacks(timerRunnable);
+        unregisterReceiver(broadcastReceiver);
     }
+
+    private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+           boolean message = intent.getBooleanExtra(RESET_MESSAGE, false);
+           if (message == true) {
+               expirationTime = System.currentTimeMillis() + INTERVAL;
+               stopRingtone();
+               logEntry("Timer reset", false);
+           }
+        }
+    };
 
 }
