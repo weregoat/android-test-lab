@@ -1,6 +1,7 @@
 package org.maialinux.oldgoatnewtricks;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -8,6 +9,7 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
+import android.widget.TextView;
 import android.widget.Toast;
 
 
@@ -26,6 +28,7 @@ public class AlertService extends Service {
     private static final String WAKE_TIME = "09:00";
     private static final int MAX_ALERTS = 3;
     private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL/MAX_ALERTS);
+    public static final String ALERT_ACTION = "org.maialinux.oldgoatnewtricks.displaymessage";
 
 
 
@@ -37,6 +40,7 @@ public class AlertService extends Service {
     long sleepDelay;
     LocalTime wakeUpTime;
     LocalTime sleepTime;
+    Intent intent;
 
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
@@ -79,6 +83,7 @@ public class AlertService extends Service {
                     logEntry(String.format("Alert number %d", alertCounts), true);
                 }
                 logEntry(String.format("Next run in %d seconds", delay/1000), false);
+
                 timerHandler.postDelayed(this, delay);
             }
         }
@@ -111,7 +116,7 @@ public class AlertService extends Service {
             sleepTime = LocalTime.parse(WAKE_TIME);
             wakeUpTime = LocalTime.parse(SLEEP_TIME);
         }
-
+        intent = new Intent(ALERT_ACTION);
 
     }
 
@@ -148,6 +153,8 @@ public class AlertService extends Service {
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
         }
         Log.d(TAG, message);
+        intent.putExtra("message", message);
+        sendBroadcast(intent);
     }
 
     private boolean sleepTime() {
