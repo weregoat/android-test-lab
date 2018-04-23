@@ -22,11 +22,12 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
     public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.activity_broadcast";
+    private static final int LOG_ENTRIES = 10;
 
 
     TextView timerTextView;
     Button resetButton;
-    String[] log = new String[5];
+    String[] log = new String[LOG_ENTRIES];
     Intent intent;
 
     @Override
@@ -46,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
                                                Intent intent = new Intent(MainActivity.BROADCAST_ACTION);
                                                intent.putExtra(AlertService.RESET_MESSAGE, true);
                                                sendBroadcast(intent);
+                                               updateView("Button reset");
                                            }
                                        }
 
@@ -56,50 +58,53 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onPause() {
         super.onPause();
-        //unregisterReceiver(broadcastReceiver);
+        updateView("Pause activity");
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        //registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
+        updateView("Resume activity");
+
     }
 
     @Override
     public void onStart() {
         super.onStart();
+        updateView("Start activity");
+
     }
 
     @Override
     public void onStop() {
-        unregisterReceiver(broadcastReceiver);
         super.onStop();
+        updateView("Stop activity");
     }
 
     @Override
     public void onDestroy() {
         stopService(intent);
         super.onDestroy();
+        unregisterReceiver(broadcastReceiver);
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            updateView(intent);
+            updateView(intent.getStringExtra("message"));
         }
     };
 
-    private void updateView(Intent intent) {
-        String message = intent.getStringExtra("message");
+    private void updateView(String message) {
         LocalDateTime now = new LocalDateTime();
         /* Use arraycopy to shift the elements of the array log */
-        System.arraycopy(log, 0, log, 1, 4);
+        System.arraycopy(log, 0, log, 1, (LOG_ENTRIES - 1));
         DateTimeFormatter formatter = ISODateTimeFormat.hourMinuteSecond();
         String logEntry = String.format("%s: %s\n", formatter.print(now), message);
         Log.d(TAG, message);
         log[0] = logEntry;
         StringBuffer text = new StringBuffer();
-        for(int i = 0; i < 5; i++) {
+        for(int i = 0; i < LOG_ENTRIES; i++) {
             String line = log[i];
             if (line != null) {
                 text.append(log[i]);

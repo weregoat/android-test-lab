@@ -55,7 +55,7 @@ public class AlertService extends Service {
 
                 long minutes = millis / 60000;
                 long seconds = millis / 1000 - (minutes * 60); // Remainder
-                String message = String.format("%sm %ss left", minutes, seconds);
+                String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
                 logEntry(message, false);
                 if (millis <= 0) {
                     alertCounts++;
@@ -102,7 +102,7 @@ public class AlertService extends Service {
     */
 
     public AlertService() {
-        Log.d(TAG, "Service initialized");
+
     }
 
     @Override
@@ -188,14 +188,14 @@ public class AlertService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId)
     {
         this.startTimer();
-        logEntry("Service started", true);
+        logEntry("Start service", true);
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy()
     {
-        logEntry("Service destroyed", true);
+        logEntry("Destroy service", true);
         this.stopRingtone();
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
@@ -208,7 +208,9 @@ public class AlertService extends Service {
            if (message == true) {
                expirationTime = System.currentTimeMillis() + INTERVAL;
                stopRingtone();
-               logEntry("Timer reset", false);
+               logEntry("Reset timer", false);
+               timerHandler.removeCallbacks(timerRunnable);
+               timerRunnable.run();
            }
         }
     };
