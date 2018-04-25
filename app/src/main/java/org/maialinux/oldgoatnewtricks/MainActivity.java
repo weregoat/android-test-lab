@@ -21,8 +21,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     private static final String TAG = "MainActivity";
-    public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.activity_broadcast";
-    private static final int LOG_ENTRIES = 10;
+    private static final int LOG_ENTRIES = 15;
 
 
     TextView timerTextView;
@@ -44,9 +43,9 @@ public class MainActivity extends AppCompatActivity {
         resetButton.setOnClickListener(new View.OnClickListener() {
                                            @Override
                                            public void onClick(View view) {
-                                               Intent intent = new Intent(MainActivity.BROADCAST_ACTION);
-                                               intent.putExtra(AlertService.RESET_MESSAGE, true);
-                                               sendBroadcast(intent);
+                                               Intent sendIntent = new Intent(AlertService.BROADCAST_ACTION);
+                                               sendIntent.putExtra(AlertService.RESET_MESSAGE, true);
+                                               sendBroadcast(sendIntent);
                                                updateView("Button reset");
                                            }
                                        }
@@ -95,22 +94,24 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+
     private void updateView(String message) {
-        LocalDateTime now = new LocalDateTime();
-        /* Use arraycopy to shift the elements of the array log */
-        System.arraycopy(log, 0, log, 1, (LOG_ENTRIES - 1));
-        DateTimeFormatter formatter = ISODateTimeFormat.hourMinuteSecond();
-        String logEntry = String.format("%s: %s\n", formatter.print(now), message);
-        Log.d(TAG, message);
-        log[0] = logEntry;
-        StringBuffer text = new StringBuffer();
-        for(int i = 0; i < LOG_ENTRIES; i++) {
-            String line = log[i];
-            if (line != null) {
-                text.append(log[i]);
+        if (message != null) {
+            LocalDateTime now = new LocalDateTime();
+            /* Use arraycopy to shift the elements of the array log */
+            System.arraycopy(log, 0, log, 1, (LOG_ENTRIES - 1));
+            DateTimeFormatter formatter = ISODateTimeFormat.hourMinuteSecond();
+            String logEntry = String.format("%s: %s\n", formatter.print(now), message);
+            log[0] = logEntry;
+            StringBuffer text = new StringBuffer();
+            for (int i = 0; i < LOG_ENTRIES; i++) {
+                String line = log[i];
+                if (line != null) {
+                    text.append(log[i]);
+                }
             }
+            timerTextView.setText(text.toString());
         }
-        timerTextView.setText(text.toString());
     }
 
 

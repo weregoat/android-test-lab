@@ -14,10 +14,13 @@ import android.util.Log;
 import android.widget.Toast;
 
 
+import org.joda.time.Duration;
 import org.joda.time.Interval;
 import org.joda.time.LocalTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
+import org.joda.time.format.PeriodFormatter;
+import org.joda.time.format.PeriodFormatterBuilder;
 
 
 public class AlertService extends Service {
@@ -25,8 +28,8 @@ public class AlertService extends Service {
 
     private static final long INTERVAL = 3600000; // One hour
     private static final long ALERT_INTERVAL = 600000; // ten minutes
-    private static final String SLEEP_TIME = "18:00";
-    private static final String WAKE_TIME = "09:00";
+    private static final String SLEEP_TIME = "20:00";
+    private static final String WAKE_TIME = "08:30";
     private static final int MAX_ALERTS = 3;
     private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL/MAX_ALERTS);
     public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.alert_service_broadcast";
@@ -42,7 +45,10 @@ public class AlertService extends Service {
     long sleepDelay;
     LocalTime wakeUpTime;
     LocalTime sleepTime;
-    Intent intent;
+    Intent broadCastIntent;
+    Intent serviceIntent;
+    boolean accelerometerServiceStarted = false;
+
 
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
@@ -59,10 +65,11 @@ public class AlertService extends Service {
                 logEntry(message, false);
                 if (millis <= 0) {
                     alertCounts++;
-                    delay = 5000; // Rings for about five seconds
+                    delay = 10000; // Rings for about ten seconds
                     stopRingtone();
                     playRingtone();
                     expirationTime = System.currentTimeMillis() + ALERT_INTERVAL; // Reset the expiration time
+                    logEntry(String.format("Alert number %d", alertCounts), true);
                 } else {
                     if (alertCounts == 0) {
                         delay = Math.round(INTERVAL / 30); // Check 30 times in the given interval.
@@ -70,24 +77,24 @@ public class AlertService extends Service {
                         delay = ALERT_DELAY;
                     }
                 }
+                if (accelerometerServiceStarted == false) {
+                    startAccelerometerService();
+                }
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %d seconds", sleepDelay/1000), false);
+                stopAccelerometerService();
             }
             if (alertCounts >= MAX_ALERTS) {
                 stopRingtone();
                 logEntry("Send SMS", true);
                 timerHandler.removeCallbacks(timerRunnable);
+                stopAccelerometerService();
                 stopSelf();
-            } else {
-                if (alertCounts > 0) {
-                    logEntry(String.format("Alert number %d", alertCounts), true);
-                }
-                logEntry(String.format("Next check in %d seconds", delay/1000), false);
-
-                timerHandler.postDelayed(this, delay);
             }
+            timerHandler.postDelayed(this, delay);
+
         }
 
     };
@@ -118,8 +125,9 @@ public class AlertService extends Service {
             sleepTime = LocalTime.parse(WAKE_TIME);
             wakeUpTime = LocalTime.parse(SLEEP_TIME);
         }
-        intent = new Intent(BROADCAST_ACTION);
-        registerReceiver(broadcastReceiver, new IntentFilter(MainActivity.BROADCAST_ACTION));
+        broadCastIntent = new Intent(BROADCAST_ACTION);
+        registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
+        serviceIntent = new Intent(this, AccelerometerService.class);
     }
 
 
@@ -155,8 +163,8 @@ public class AlertService extends Service {
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
         }
         Log.d(TAG, message);
-        intent.putExtra("message", message);
-        sendBroadcast(intent);
+        broadCastIntent.putExtra("message", message);
+        sendBroadcast(broadCastIntent);
     }
 
     private boolean sleepTime() {
@@ -171,12 +179,20 @@ public class AlertService extends Service {
                 }
                 /* We are between sleep time and midnight */
                 if (now.isAfter(wakeUpTime)) {
-                    Interval pastSleepTime = new Interval(sleepTime.getMillisOfDay(), now.getMillisOfDay());
-                    sleepDelay = sleepDelay - pastSleepTime.toDurationMillis() + INTERVAL;
+                    Interval pastSleepTime = new Interval(LocalTime.MIDNIGHT.getMillisOfDay(), now.getMillisOfDay());
+                    sleepDelay = pastSleepTime.toDurationMillis();
                 }
-                logEntry(String.format("Sleep time %d", sleepTime.getMillisOfDay()), false);
-                logEntry(String.format("Wakeup time %d", wakeUpTime.getMillisOfDay()), false);
-                logEntry(String.format("Sleep interval = %d seconds", sleepDelay / 1000), false);
+                DateTimeFormatter format = ISODateTimeFormat.hourMinute();
+                logEntry(String.format("Sleep time %s", format.print(sleepTime)), false);
+                logEntry(String.format("Wakeup time %s", format.print(wakeUpTime)), false);
+                PeriodFormatter formatter = new PeriodFormatterBuilder()
+                        .appendHours()
+                        .appendSuffix("h")
+                        .appendMinutes()
+                        .appendSuffix("m")
+                        .toFormatter();
+                Duration sleepDuration = new Duration(sleepDelay);
+                logEntry(String.format("Sleeping for %s", formatter.print(sleepDuration.toPeriod())), false);
             } else {
                 sleepDelay = 0;
             }
@@ -188,17 +204,18 @@ public class AlertService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId)
     {
         this.startTimer();
-        logEntry("Start service", true);
+        logEntry("Start alert service", true);
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy()
     {
-        logEntry("Destroy service", true);
+        logEntry("Destroy alert service", true);
         this.stopRingtone();
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
+        stopAccelerometerService();
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -209,10 +226,23 @@ public class AlertService extends Service {
                expirationTime = System.currentTimeMillis() + INTERVAL;
                stopRingtone();
                logEntry("Reset timer", false);
-               timerHandler.removeCallbacks(timerRunnable);
-               timerRunnable.run();
+               alertCounts = 0;
+               //timerHandler.removeCallbacks(timerRunnable);
+               //timerRunnable.run();
            }
         }
     };
+
+    private void startAccelerometerService()
+    {
+        startService(serviceIntent);
+        accelerometerServiceStarted = true;
+    }
+
+    private void stopAccelerometerService()
+    {
+        stopService(serviceIntent);
+        accelerometerServiceStarted = false;
+    }
 
 }
