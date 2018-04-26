@@ -26,14 +26,23 @@ import org.joda.time.format.ISODateTimeFormat;
 public class AccelerometerService extends Service {
 
 
-    /* Listen to the sensor only for a few seconds seconds to minimize battery usage */
+    /* Listen intermittently to the sensor for a few seconds only to minimize battery usage */
     /* If I am active I can, as well, press the button. Otherwise that should be enough
         to detect movement while carrying the phone around.
-        Remember this is about detecting when I was inactive for a long period, presumed dead.
+        Remember this is about detecting when I am inactive over a long period, presumed dead.
      */
-    private static final long SLEEP_INTERVAL = 300000; // five minutes
-    private static final long LISTENING_INTERVAL = 30000; // 30 seconds
-    private static final double THRESHOLD = 0.5;
+    private static final long SLEEP_INTERVAL = 30000; //  Thirty seconds between checks
+    private static final long LISTENING_INTERVAL = 2000; // Listen for two seconds
+    private static final double THRESHOLD = 1.0; // This much acceleration to trigger movement
+
+
+    /*
+     * time smoothing constant for low-pass filter
+     * 0 ≤ alpha ≤ 1 ; a smaller value basically means more smoothing
+     * See: http://en.wikipedia.org/wiki/Low-pass_filter#Discrete-time_realization
+     * From: http://blog.thomnichols.org/2011/08/smoothing-sensor-data-with-a-low-pass-filter
+     */
+    private static final float ALPHA = 0.8f; // Threshold for low-pass filter
 
 
     private static final String TAG = "AccelerometerService";
@@ -88,40 +97,45 @@ public class AccelerometerService extends Service {
         return null;
     }
 
-        private final SensorEventListener sensorEventListener = new SensorEventListener() {
+    private final SensorEventListener sensorEventListener = new SensorEventListener() {
 
 
-            @Override
-            public void onSensorChanged(SensorEvent se) {
-                float x = se.values[0];
-                float y = se.values[1];
-                float z = se.values[2];
-                lastAcceleration = currentAcceleration;
-                currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); //Vector
-                float delta = currentAcceleration - lastAcceleration;
-                acceleration = Math.abs(acceleration * 0.9f + delta); // perform low-cut filter
-                Log.d(TAG, String.format("acceleration: %f", acceleration));
-                if (acceleration >= THRESHOLD){
-                    reset = true;
-                }
+        @Override
+
+        /**
+         * @see http://en.wikipedia.org/wiki/Low-pass_filter#Algorithmic_implementation
+         * @see http://developer.android.com/reference/android/hardware/SensorEvent.html#values
+         * @see http://blog.thomnichols.org/2011/08/smoothing-sensor-data-with-a-low-pass-filter
+         * @see https://www.built.io/blog/applying-low-pass-filter-to-android-sensor-s-readings
+         */
+        public void onSensorChanged(SensorEvent event) {
+            float x = event.values[0];
+            float y = event.values[1];
+            float z = event.values[2];
+            lastAcceleration = currentAcceleration;
+            currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
+            float delta = currentAcceleration - lastAcceleration;
+            acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
+            Log.d(TAG, String.format("acceleration: %f", acceleration));
+            if (acceleration >= THRESHOLD) {
+                reset = true;
             }
+        }
 
-            @Override
-            public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
 
-            }
-        };
+        }
+    };
 
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId)
-    {
+    public int onStartCommand(Intent intent, int flags, int startId) {
         return START_NOT_STICKY;
     }
 
     @Override
-    public void onDestroy()
-    {
+    public void onDestroy() {
         accelHandler.removeCallbacks(accelRunnable);
         stopListening();
         logEntry("Destroy accelerometer service", true);
@@ -129,10 +143,9 @@ public class AccelerometerService extends Service {
 
     }
 
-    private void startListening()
-    {
+    private void startListening() {
         if (sensorRunning == false) {
-            logEntry("Start listening to accelerometer", false);
+            //logEntry("Start listening to accelerometer", false);
             acceleration = 0.0f;
             currentAcceleration = SensorManager.GRAVITY_EARTH;
             lastAcceleration = SensorManager.GRAVITY_EARTH;
@@ -142,10 +155,9 @@ public class AccelerometerService extends Service {
         }
     }
 
-    private void stopListening()
-    {
+    private void stopListening() {
         if (sensorRunning == true) {
-            logEntry("Stop listening to accelerometer", false);
+            //logEntry("Stop listening to accelerometer", false);
             sensorManager.unregisterListener(sensorEventListener);
             sensorRunning = false;
         }

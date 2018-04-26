@@ -226,8 +226,8 @@ public class AlertService extends Service {
                stopRingtone();
                logEntry("Reset timer", false);
                alertCounts = 0;
-               //timerHandler.removeCallbacks(timerRunnable);
-               //timerRunnable.run();
+               timerHandler.removeCallbacks(timerRunnable);
+               timerRunnable.run();
            }
         }
     };
