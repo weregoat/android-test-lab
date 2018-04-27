@@ -27,7 +27,7 @@ import org.joda.time.format.PeriodFormatterBuilder;
 public class AlertService extends Service {
 
 
-    private static final long INTERVAL = 3600000; // One hour
+    public static final long INTERVAL = 3600000; // One hour
     private static final long ALERT_INTERVAL = 600000; // ten minutes
     private static final String SLEEP_TIME = "22:00";
     private static final String WAKE_TIME = "08:00";

@@ -71,8 +71,10 @@ public class AccelerometerService extends Service {
                 sendBroadcast(broadCastIntent);
                 reset = false;
                 stopListening();
-                delay = SLEEP_INTERVAL;
                 logEntry("Accelerometer Service sent reset message", false);
+                /* After a reset, sleep for a longer time */
+                delay = AlertService.INTERVAL/2;
+                logEntry(String.format("Accelerometer service sleeping for %d seconds", delay/1000), false);
             }
             accelHandler.postDelayed(this, delay);
         }
