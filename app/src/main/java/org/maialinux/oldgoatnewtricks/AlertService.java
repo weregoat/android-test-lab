@@ -29,7 +29,7 @@ public class AlertService extends Service {
 
     private static final long INTERVAL = 3600000; // One hour
     private static final long ALERT_INTERVAL = 600000; // ten minutes
-    private static final String SLEEP_TIME = "21:00";
+    private static final String SLEEP_TIME = "22:00";
     private static final String WAKE_TIME = "08:00";
     private static final int MAX_ALERTS = 3;
     private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL/MAX_ALERTS);
@@ -58,7 +58,7 @@ public class AlertService extends Service {
         public void run() {
             stopRingtone();
             long delay;
-            if (sleepTime() == false) {
+            if (isSleepTime() == false) {
                 long millis = expirationTime - System.currentTimeMillis();
 
                 long minutes = millis / 60000;
@@ -166,18 +166,24 @@ public class AlertService extends Service {
         sendBroadcast(broadCastIntent);
     }
 
-    private boolean sleepTime() {
+    private boolean isSleepTime() {
         boolean sleep = false;
         if (alertCounts == 0) { /* Never go to sleep if there are alerts */
-
             LocalDateTime now = LocalDateTime.now();
-            /* If the wake-up time has passed shift it forwards */
-            if (now.isAfter(wakeUpDateTime)) {
-                wakeUpDateTime.plusDays(1);
-
-            }
-            if (now.isAfter(sleepDateTime) && now.isBefore(wakeUpDateTime)) {
+            /* We are between sleep time and wake-up time */
+            if (now.isAfter(sleepDateTime)) {
+                /* This is to correctly calculate the delay time till wake-up */
+                if (wakeUpDateTime.isBefore(now)) {
+                    wakeUpDateTime = wakeUpDateTime.plusDays(1);
+                }
+                sleepDateTime = sleepDateTime.plusDays(1);
                 sleep = true;
+            } else if (now.isBefore(wakeUpDateTime)) {
+                if (sleepDateTime.isAfter(wakeUpDateTime)) {
+                    sleep = true;
+                }
+            }
+            if (sleep == true) {
                 Period sleepPeriod = new Period(now, wakeUpDateTime);
                 sleepDelay = sleepPeriod.toStandardDuration().getMillis();
                 DateTimeFormatter format = ISODateTimeFormat.dateTimeNoMillis();
@@ -190,11 +196,10 @@ public class AlertService extends Service {
                         .appendSuffix("m")
                         .toFormatter();
                 logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), false);
-                /* Set next sleeping time to tomorrow */
-                sleepDateTime = sleepDateTime.plusDays(1);
             } else {
                 sleepDelay = 0;
             }
+
         }
         return sleep;
     }
