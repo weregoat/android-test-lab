@@ -1,5 +1,8 @@
 package org.maialinux.oldgoatnewtricks;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -10,10 +13,13 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 import android.widget.Toast;
 
 
+import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.joda.time.LocalDateTime;
 import org.joda.time.LocalTime;
@@ -35,6 +41,7 @@ public class AlertService extends Service {
     private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL/MAX_ALERTS);
     public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.alert_service_broadcast";
     public static final String RESET_MESSAGE = "reset";
+    public static final String END_MESSAGE = "stop";
 
 
 
@@ -47,9 +54,14 @@ public class AlertService extends Service {
 
     Intent broadCastIntent;
     Intent serviceIntent;
+    Intent resetIntent;
     boolean accelerometerServiceStarted = false;
     LocalDateTime wakeUpDateTime;
     LocalDateTime sleepDateTime;
+
+    NotificationManagerCompat notificationManager;
+    NotificationCompat.Builder mBuilder;
+    Notification notification;
 
 
     Handler timerHandler = new Handler();
@@ -72,9 +84,11 @@ public class AlertService extends Service {
                     playRingtone();
                     expirationTime = System.currentTimeMillis() + ALERT_INTERVAL; // Reset the expiration time
                     logEntry(String.format("Alert number %d", alertCounts), true);
+
+
                 } else {
                     if (alertCounts == 0) {
-                        delay = Math.round(INTERVAL / 30); // Check 30 times in the given interval.
+                        delay = Math.round(INTERVAL / 4);
                     } else {
                         delay = ALERT_DELAY;
                     }
@@ -95,6 +109,7 @@ public class AlertService extends Service {
                 stopAccelerometerService();
                 stopSelf();
             }
+            updateNotificationText();
             timerHandler.postDelayed(this, delay);
 
         }
@@ -120,13 +135,31 @@ public class AlertService extends Service {
         alertCounts = 0;
         Uri ringtoneURI = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
         ringtone = RingtoneManager.getRingtone(getBaseContext(), ringtoneURI);
+        expirationTime = System.currentTimeMillis() + INTERVAL;
 
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
         serviceIntent = new Intent(this, AccelerometerService.class);
         parseSleepingTimes();
-        DateTimeFormatter formatter = ISODateTimeFormat.dateTime();
+        DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
+        resetIntent = new Intent(AlertService.BROADCAST_ACTION);
+        resetIntent.putExtra(AlertService.RESET_MESSAGE, true);
+        Intent stopIntent = new Intent(AlertService.BROADCAST_ACTION);
+        stopIntent.putExtra(AlertService.END_MESSAGE, true);
+        PendingIntent resetPendingIntent = PendingIntent.getBroadcast(getApplicationContext(), 0, resetIntent, 0);
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(getApplicationContext(), 1, stopIntent, 0);
+        mBuilder = new NotificationCompat.Builder(this, "Something")
+                .setContentText("")
+                .setContentTitle("Dead-man notification")
+                .setAutoCancel(true)
+                .setSmallIcon(R.drawable.ic_stat_notification)
+                .addAction(R.drawable.ic_stat_reset, "Reset", resetPendingIntent)
+                .addAction(R.drawable.ic_stat_stop, "Stop", stopPendingIntent);
+        notificationManager = NotificationManagerCompat.from(this);
+        notification = mBuilder.build();
+        startForeground(99, notification);
+
     }
 
 
@@ -196,6 +229,7 @@ public class AlertService extends Service {
                         .appendSuffix("m")
                         .toFormatter();
                 logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), false);
+                expirationTime = System.currentTimeMillis() + sleepDelay + INTERVAL;
             } else {
                 sleepDelay = 0;
             }
@@ -220,19 +254,26 @@ public class AlertService extends Service {
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
         stopAccelerometerService();
+        notificationManager.cancel(0);
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-           boolean message = intent.getBooleanExtra(RESET_MESSAGE, false);
-           if (message == true) {
+           boolean resetMessage = intent.getBooleanExtra(RESET_MESSAGE, false);
+           boolean endMessage = intent.getBooleanExtra(END_MESSAGE, false);
+           if (resetMessage == true) {
                expirationTime = System.currentTimeMillis() + INTERVAL;
                stopRingtone();
                logEntry("Reset timer", false);
                alertCounts = 0;
                timerHandler.removeCallbacks(timerRunnable);
                timerRunnable.run();
+           }
+           if (endMessage == true) {
+               logEntry("Stop service", false);
+               stopRingtone();
+               stopSelf();
            }
         }
     };
@@ -265,11 +306,15 @@ public class AlertService extends Service {
         if (wakeUpDateTime.isBefore(LocalDateTime.now())) {
             wakeUpDateTime = wakeUpDateTime.plusDays(1);
         }
+    }
 
-
-
-
-
+    private void updateNotificationText()
+    {
+        DateTimeFormatter formatter = ISODateTimeFormat.hourMinuteSecond();
+        String text = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
+        mBuilder.setContentText(text);
+        notification = mBuilder.build();
+        notificationManager.notify(99, notification);
     }
 
 }

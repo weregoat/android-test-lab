@@ -1,6 +1,7 @@
 package org.maialinux.oldgoatnewtricks;
 
 
+import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -26,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
 
     TextView timerTextView;
     Button resetButton;
+    Button stopButton;
     String[] log = new String[LOG_ENTRIES];
     Intent intent;
 
@@ -36,7 +38,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         timerTextView = findViewById(R.id.main_activity_view);
         intent = new Intent(this, AlertService.class);
-        startService(intent);
+        startAlertService();
         registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
 
         resetButton = findViewById(R.id.button);
@@ -47,11 +49,24 @@ public class MainActivity extends AppCompatActivity {
                                                sendIntent.putExtra(AlertService.RESET_MESSAGE, true);
                                                sendBroadcast(sendIntent);
                                                updateView("Button reset");
+                                               startAlertService();
                                            }
                                        }
 
             );
+        stopButton = findViewById(R.id.stop_button);
+        stopButton.setOnClickListener(new View.OnClickListener() {
+                                           @Override
+                                           public void onClick(View view) {
+                                               Intent sendIntent = new Intent(AlertService.BROADCAST_ACTION);
+                                               sendIntent.putExtra(AlertService.END_MESSAGE, true);
+                                               sendBroadcast(sendIntent);
+                                               updateView("Button stop");
+                                               stopService(intent);
+                                           }
+                                       }
 
+        );
     }
 
     @Override
@@ -82,7 +97,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onDestroy() {
-        stopService(intent);
         super.onDestroy();
         unregisterReceiver(broadcastReceiver);
     }
@@ -111,6 +125,21 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             timerTextView.setText(text.toString());
+        }
+    }
+
+    private void startAlertService()
+    {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        boolean running = false;
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (AlertService.class.getName().equals(service.service.getClassName())) {
+                running = true;
+                break;
+            }
+        }
+        if (running == false) {
+            startService(intent);
         }
     }
 
