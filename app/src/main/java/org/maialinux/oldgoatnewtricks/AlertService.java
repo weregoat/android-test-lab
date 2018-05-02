@@ -1,7 +1,6 @@
 package org.maialinux.oldgoatnewtricks;
 
 import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
@@ -16,7 +15,6 @@ import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
-import android.widget.Toast;
 
 
 import org.joda.time.DateTime;
@@ -70,32 +68,36 @@ public class AlertService extends Service {
         public void run() {
             stopRingtone();
             long delay;
+            DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
+
             if (isSleepTime() == false) {
                 long millis = expirationTime - System.currentTimeMillis();
-
-                long minutes = millis / 60000;
-                long seconds = millis / 1000 - (minutes * 60); // Remainder
-                String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
-                logEntry(message, false);
                 if (millis <= 0) {
                     alertCounts++;
                     delay = 10000; // Rings for about ten seconds
                     stopRingtone();
                     playRingtone();
                     expirationTime = System.currentTimeMillis() + ALERT_INTERVAL; // Reset the expiration time
-                    logEntry(String.format("Alert number %d", alertCounts), true);
-
 
                 } else {
+                    long minutes = millis / 60000;
+                    long seconds = millis / 1000 - (minutes * 60); // Remainder
+                    String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
+                    logEntry(message, false);
                     if (alertCounts == 0) {
-                        delay = Math.round(INTERVAL / 4);
+                        delay = Math.round(INTERVAL / 30);
+                        if (millis < delay) {
+                            delay = millis;
+                        }
                     } else {
                         delay = ALERT_DELAY;
                     }
+
                 }
                 if (accelerometerServiceStarted == false) {
                     startAccelerometerService();
                 }
+
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
@@ -109,7 +111,12 @@ public class AlertService extends Service {
                 stopAccelerometerService();
                 stopSelf();
             }
-            updateNotificationText();
+
+            String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
+            if (alertCounts > 0) {
+                notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
+            }
+            logEntry(notificationText, true);
             timerHandler.postDelayed(this, delay);
 
         }
@@ -190,13 +197,13 @@ public class AlertService extends Service {
         timerRunnable.run();
     }
 
-    private void logEntry(String message, boolean toast) {
-        if (toast) {
-            Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
-        }
+    private void logEntry(String message, boolean updateNotification) {
         Log.d(TAG, message);
         broadCastIntent.putExtra("message", message);
         sendBroadcast(broadCastIntent);
+        if (updateNotification == true) {
+            updateNotificationText(message);
+        }
     }
 
     private boolean isSleepTime() {
@@ -228,8 +235,8 @@ public class AlertService extends Service {
                         .appendMinutes()
                         .appendSuffix("m")
                         .toFormatter();
-                logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), false);
                 expirationTime = System.currentTimeMillis() + sleepDelay + INTERVAL;
+                logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
             } else {
                 sleepDelay = 0;
             }
@@ -242,7 +249,7 @@ public class AlertService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId)
     {
         this.startTimer();
-        logEntry("Start alert service", true);
+        logEntry("Start alert service", false);
         return START_NOT_STICKY;
     }
 
@@ -308,13 +315,14 @@ public class AlertService extends Service {
         }
     }
 
-    private void updateNotificationText()
+    private void updateNotificationText(String text)
     {
-        DateTimeFormatter formatter = ISODateTimeFormat.hourMinuteSecond();
-        String text = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
-        mBuilder.setContentText(text);
-        notification = mBuilder.build();
-        notificationManager.notify(99, notification);
+        if (! text.isEmpty()) {
+            mBuilder.setContentText(text);
+            mBuilder.setWhen(System.currentTimeMillis());
+            notification = mBuilder.build();
+            notificationManager.notify(99, notification);
+        }
     }
 
 }
