@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -14,6 +15,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -33,7 +35,7 @@ public class AccelerometerService extends Service {
      */
     private static final long SLEEP_INTERVAL = 30000; //  Thirty seconds between checks
     private static final long LISTENING_INTERVAL = 2000; // Listen for two seconds
-    private static final double THRESHOLD = 1.0; // This much acceleration to trigger movement
+    private static final double THRESHOLD = 0.5f; // This much acceleration to trigger movement
 
 
     /*
@@ -73,7 +75,9 @@ public class AccelerometerService extends Service {
                 stopListening();
                 logEntry("Accelerometer Service sent reset message", false);
                 /* After a reset, sleep for a longer time */
-                delay = AlertService.INTERVAL/2;
+                SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+                AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG);
+                delay = AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG)*(1000/2);
                 logEntry(String.format("Accelerometer service sleeping for %d seconds", delay/1000), false);
             }
             accelHandler.postDelayed(this, delay);

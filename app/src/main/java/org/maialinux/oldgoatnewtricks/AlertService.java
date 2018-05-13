@@ -7,11 +7,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
@@ -49,12 +51,16 @@ public class AlertService extends Service {
     long expirationTime;
     int alertCounts = 0;
     long sleepDelay;
+    long interval;
+    int maxAlerts = MAX_ALERTS;
 
     Intent broadCastIntent;
     Intent serviceIntent;
     Intent resetIntent;
     boolean accelerometerServiceStarted = false;
     LocalDateTime wakeUpDateTime;
+    LocalTime wakeUpTime;
+    LocalTime sleepTime;
     LocalDateTime sleepDateTime;
 
     NotificationManagerCompat notificationManager;
@@ -85,7 +91,7 @@ public class AlertService extends Service {
                     String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
                     logEntry(message, false);
                     if (alertCounts == 0) {
-                        delay = Math.round(INTERVAL / 30);
+                        delay = Math.round(interval / 30);
                         if (millis < delay) {
                             delay = millis;
                         }
@@ -104,7 +110,7 @@ public class AlertService extends Service {
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
                 stopAccelerometerService();
             }
-            if (alertCounts >= MAX_ALERTS) {
+            if (alertCounts >= maxAlerts) {
                 stopRingtone();
                 logEntry("Send SMS", true);
                 timerHandler.removeCallbacks(timerRunnable);
@@ -139,15 +145,17 @@ public class AlertService extends Service {
     @Override
     public void onCreate() {
 
+        //SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        interval = INTERVAL;
+        reloadConfig();
         alertCounts = 0;
         Uri ringtoneURI = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
         ringtone = RingtoneManager.getRingtone(getBaseContext(), ringtoneURI);
-        expirationTime = System.currentTimeMillis() + INTERVAL;
+        expirationTime = System.currentTimeMillis() + interval;
 
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
         serviceIntent = new Intent(this, AccelerometerService.class);
-        parseSleepingTimes();
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
@@ -166,7 +174,7 @@ public class AlertService extends Service {
         notificationManager = NotificationManagerCompat.from(this);
         notification = mBuilder.build();
         startForeground(99, notification);
-
+        logEntry(String.format("Interval: %d", interval/1000), false);
     }
 
 
@@ -192,7 +200,8 @@ public class AlertService extends Service {
 
     public void startTimer() {
         alertCounts = 0;
-        expirationTime = System.currentTimeMillis() + INTERVAL;
+        reloadConfig();
+        expirationTime = System.currentTimeMillis() + interval;
         timerHandler.removeCallbacks(timerRunnable);
         timerRunnable.run();
     }
@@ -235,7 +244,7 @@ public class AlertService extends Service {
                         .appendMinutes()
                         .appendSuffix("m")
                         .toFormatter();
-                expirationTime = System.currentTimeMillis() + sleepDelay + INTERVAL;
+                expirationTime = System.currentTimeMillis() + sleepDelay + interval;
                 logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
             } else {
                 sleepDelay = 0;
@@ -270,10 +279,12 @@ public class AlertService extends Service {
            boolean resetMessage = intent.getBooleanExtra(RESET_MESSAGE, false);
            boolean endMessage = intent.getBooleanExtra(END_MESSAGE, false);
            if (resetMessage == true) {
-               expirationTime = System.currentTimeMillis() + INTERVAL;
+               expirationTime = System.currentTimeMillis() + interval;
+               logEntry(String.format("Interval: %d", interval/1000), false);
                stopRingtone();
                logEntry("Reset timer", false);
                alertCounts = 0;
+               reloadConfig();
                timerHandler.removeCallbacks(timerRunnable);
                timerRunnable.run();
            }
@@ -297,11 +308,8 @@ public class AlertService extends Service {
         accelerometerServiceStarted = false;
     }
 
-    private void parseSleepingTimes()
+    private void calculateSleepDateTimes()
     {
-        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
-        LocalTime wakeUpTime = LocalTime.parse(WAKE_TIME, formatter);
-        LocalTime sleepTime = LocalTime.parse(SLEEP_TIME, formatter);
         LocalDate today = new LocalDate();
         sleepDateTime = new LocalDateTime()
                 .withDate(today.getYear(), today.getMonthOfYear(), today.getDayOfMonth())
@@ -323,6 +331,59 @@ public class AlertService extends Service {
             notification = mBuilder.build();
             notificationManager.notify(99, notification);
         }
+    }
+
+    private void reloadConfig()
+    {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*1000;
+        wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
+        sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
+        maxAlerts = getInteger(sharedPreferences, "max_alerts", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
+        calculateSleepDateTimes();
+    }
+
+    public static Long getLong(SharedPreferences sharedPreferences, String preferenceKey, String defaultPreferenceValue, Long defaultValue, String tag) {
+        Long value = defaultValue;
+        if (sharedPreferences.contains(preferenceKey)) {
+            try {
+                String stringValue = sharedPreferences.getString(preferenceKey, defaultPreferenceValue);
+                value = Long.parseLong(stringValue);
+            } catch (NumberFormatException nfe) {
+                Log.e(tag, nfe.getMessage());
+            }
+        }
+        return value;
+    }
+
+    public static Integer getInteger(SharedPreferences sharedPreferences, String preferenceKey, String defaultPreferenceValue, Integer defaultValue, String tag) {
+        Integer value = defaultValue;
+        if (sharedPreferences.contains(preferenceKey)) {
+            try {
+                String stringValue = sharedPreferences.getString(preferenceKey, defaultPreferenceValue);
+                value = Integer.parseInt(stringValue);
+            } catch (NumberFormatException nfe) {
+                Log.e(tag, nfe.getMessage());
+            }
+        }
+        return value;
+    }
+
+    public static LocalTime getTime(SharedPreferences sharedPreferences, String preferenceKey, String defaultValue, String tag) {
+        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
+        LocalTime value = LocalTime.parse(defaultValue, formatter);
+        try {
+            if (sharedPreferences.contains(preferenceKey)) {
+                String stringValue = sharedPreferences.getString(preferenceKey, defaultValue);
+                LocalTime preferenceTime = LocalTime.parse(stringValue, formatter);
+                if (preferenceTime != null) {
+                    value = preferenceTime;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(tag, e.getMessage());
+        }
+        return value;
     }
 
 }

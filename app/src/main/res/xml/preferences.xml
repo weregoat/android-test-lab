@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:key="preferences_screen">
+    <EditTextPreference
+        android:key="interval"
+        android:title="Timer interval in seconds"
+        android:defaultValue="3600" />
+    <EditTextPreference
+        android:key="wake_up"
+        android:title="Wake up time"
+        android:defaultValue="08:00" />
+    <EditTextPreference
+        android:key="sleep"
+        android:title="Sleep time"
+        android:defaultValue="22:00" />
+    <RingtonePreference
+        android:key="ringtone"
+        android:title="Alarm ringtone"
+        android:ringtoneType="alarm"
+        android:showDefault="true" />
+    <EditTextPreference
+        android:key="phone_number"
+        android:title="Phone number for SMS alert" />
+    <EditTextPreference
+        android:key="max_warnings"
+        android:title="Max warnings before SMS alert"/>
+</PreferenceScreen>

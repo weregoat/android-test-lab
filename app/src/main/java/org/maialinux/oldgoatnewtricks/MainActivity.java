@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -40,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
         startAlertService();
         registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
 
-        resetButton = findViewById(R.id.button);
+        resetButton = findViewById(R.id.reset_button);
         resetButton.setOnClickListener(new View.OnClickListener() {
                                            @Override
                                            public void onClick(View view) {
@@ -66,6 +67,19 @@ public class MainActivity extends AppCompatActivity {
                                        }
 
         );
+        stopButton = findViewById(R.id.configure_button);
+        stopButton.setOnClickListener(new View.OnClickListener() {
+                                          @Override
+                                          public void onClick(View view) {
+                                              Intent intent = new Intent(getApplicationContext(), SettingsActivity.class);
+                                              startActivity(intent);
+
+                                          }
+                                      }
+
+        );
+        PreferenceManager.setDefaultValues(this,R.xml.preferences, false);
+        //getFragmentManager().beginTransaction().replace(R.id.settings_fragment, new SettingsFragment()).commit();
     }
 
     @Override
