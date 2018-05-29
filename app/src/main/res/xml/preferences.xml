@@ -3,8 +3,8 @@
     android:key="preferences_screen">
     <EditTextPreference
         android:key="interval"
-        android:title="Timer interval in seconds"
-        android:defaultValue="3600" />
+        android:title="Timer interval in minutes"
+        android:defaultValue="60" />
     <EditTextPreference
         android:key="wake_up"
         android:title="Wake up time"

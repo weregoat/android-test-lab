@@ -16,6 +16,7 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
+import android.telephony.SmsManager;
 import android.util.Log;
 
 
@@ -52,7 +53,9 @@ public class AlertService extends Service {
     int alertCounts = 0;
     long sleepDelay;
     long interval;
+    long alertInterval;
     int maxAlerts = MAX_ALERTS;
+    String phoneNumber;
 
     Intent broadCastIntent;
     Intent serviceIntent;
@@ -83,7 +86,7 @@ public class AlertService extends Service {
                     delay = 10000; // Rings for about ten seconds
                     stopRingtone();
                     playRingtone();
-                    expirationTime = System.currentTimeMillis() + ALERT_INTERVAL; // Reset the expiration time
+                    expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
 
                 } else {
                     long minutes = millis / 60000;
@@ -112,7 +115,7 @@ public class AlertService extends Service {
             }
             if (alertCounts >= maxAlerts) {
                 stopRingtone();
-                logEntry("Send SMS", true);
+                sendSMS(phoneNumber, "Test SMS");
                 timerHandler.removeCallbacks(timerRunnable);
                 stopAccelerometerService();
                 stopSelf();
@@ -336,10 +339,13 @@ public class AlertService extends Service {
     private void reloadConfig()
     {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*1000;
+        interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*60000;
+        alertInterval = Math.round(interval/6);
         wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
-        maxAlerts = getInteger(sharedPreferences, "max_alerts", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
+        maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
+        phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
+        Log.d(TAG, String.format("Max alerts: %d", maxAlerts));
         calculateSleepDateTimes();
     }
 
@@ -384,6 +390,28 @@ public class AlertService extends Service {
             Log.e(tag, e.getMessage());
         }
         return value;
+    }
+
+    public static String getString(SharedPreferences sharedPreferences, String preferenceKey, String defaultValue, String tag) {
+       String value = defaultValue;
+        try {
+            if (sharedPreferences.contains(preferenceKey)) {
+                value = sharedPreferences.getString(preferenceKey, defaultValue);
+            }
+        } catch (Exception e) {
+            Log.e(tag, e.getMessage());
+        }
+        return value.trim();
+    }
+
+    private void sendSMS(String phoneNumber, String message)
+    {
+        if (!phoneNumber.isEmpty() && ! message.isEmpty()) {
+            SmsManager sms = SmsManager.getDefault();
+            sms.sendTextMessage(phoneNumber, null, message, null, null);
+            logEntry("SMS sent", true);
+        }
+
     }
 
 }
