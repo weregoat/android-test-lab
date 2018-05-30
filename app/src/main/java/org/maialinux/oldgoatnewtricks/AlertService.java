@@ -8,6 +8,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
+import android.hardware.TriggerEvent;
+import android.hardware.TriggerEventListener;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -29,6 +33,8 @@ import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
+
+import java.util.List;
 
 
 public class AlertService extends Service {
@@ -69,6 +75,8 @@ public class AlertService extends Service {
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
     Notification notification;
+    Sensor mSigMotion;
+    SensorManager mSensorManager;
 
 
     Handler timerHandler = new Handler();
@@ -132,6 +140,21 @@ public class AlertService extends Service {
 
     };
 
+    private class TriggerListener extends TriggerEventListener {
+        public void onTrigger(TriggerEvent event) {
+            expirationTime = System.currentTimeMillis() + interval;
+            logEntry(String.format("Interval: %d", interval/1000), false);
+            stopRingtone();
+            logEntry("Reset timer", false);
+            alertCounts = 0;
+            reloadConfig();
+            timerHandler.removeCallbacks(timerRunnable);
+            timerRunnable.run();
+            mSensorManager.requestTriggerSensor(this, mSigMotion);
+        }
+    }
+
+    private final TriggerEventListener mListener = new TriggerListener();
     /*
     public class LocalBinder extends Binder {
 
@@ -178,6 +201,18 @@ public class AlertService extends Service {
         notification = mBuilder.build();
         startForeground(99, notification);
         logEntry(String.format("Interval: %d", interval/1000), false);
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        mSigMotion = mSensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION);
+        List<Sensor> sensorList = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+        for (int i=0; i <sensorList.size(); i++) {
+            Log.d(TAG, sensorList.get(i).getName());
+            Log.d(TAG, sensorList.get(i).toString());
+        }
+        if (mSigMotion != null) {
+            mSensorManager.requestTriggerSensor(mListener, mSigMotion);
+        } else {
+            Log.w(TAG, "No sensor");
+        }
     }
 
 
@@ -274,6 +309,7 @@ public class AlertService extends Service {
         unregisterReceiver(broadcastReceiver);
         stopAccelerometerService();
         notificationManager.cancel(0);
+        mSensorManager.cancelTriggerSensor(mListener, mSigMotion);
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
