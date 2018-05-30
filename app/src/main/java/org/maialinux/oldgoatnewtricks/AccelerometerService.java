@@ -112,7 +112,7 @@ public class AccelerometerService extends Service {
         @Override
 
         public void onSensorChanged(SensorEvent event) {
-            if (lastGeoMagneticValues != null) {
+            if (lastGeoMagneticValues != null && reset == false) {
                 for (int i = 0; i < 3; i++) {
                     float delta = Math.abs(event.values[i] - lastGeoMagneticValues[i]);
                     if (delta >= GEOMAGNETIC_THRESHOLD) {
@@ -138,11 +138,13 @@ public class AccelerometerService extends Service {
         @Override
 
         public void onSensorChanged(SensorEvent event) {
-            float proximityValue = event.values[0];
-            if (proximityValue < event.sensor.getMaximumRange()) {
-                Log.d(TAG, String.format("Proximity triggered with a value of %f", event.values[0]));
-                logEntry("Proximity sensor triggered", true);
-                reset = true;
+            if (reset == false) {
+                float proximityValue = event.values[0];
+                if (proximityValue < event.sensor.getMaximumRange()) {
+                    Log.d(TAG, String.format("Proximity triggered with a value of %f", event.values[0]));
+                    logEntry("Proximity sensor triggered", true);
+                    reset = true;
+                }
             }
 
 
@@ -166,17 +168,19 @@ public class AccelerometerService extends Service {
          * @see https://www.built.io/blog/applying-low-pass-filter-to-android-sensor-s-readings
          */
         public void onSensorChanged(SensorEvent event) {
-            float x = event.values[0];
-            float y = event.values[1];
-            float z = event.values[2];
-            lastAcceleration = currentAcceleration;
-            currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
-            float delta = currentAcceleration - lastAcceleration;
-            acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
-            Log.d(TAG, String.format("acceleration: %f", acceleration));
-            if (acceleration >= ACCELERATION_THRESHOLD) {
-                logEntry("Accelerometer sensor triggered", true);
-                reset = true;
+            if (reset == false) {
+                float x = event.values[0];
+                float y = event.values[1];
+                float z = event.values[2];
+                lastAcceleration = currentAcceleration;
+                currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
+                float delta = currentAcceleration - lastAcceleration;
+                acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
+                Log.d(TAG, String.format("acceleration: %f", acceleration));
+                if (acceleration >= ACCELERATION_THRESHOLD) {
+                    logEntry("Accelerometer sensor triggered", true);
+                    reset = true;
+                }
             }
         }
 
