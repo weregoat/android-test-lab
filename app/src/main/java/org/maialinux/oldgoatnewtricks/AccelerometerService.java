@@ -117,6 +117,7 @@ public class AccelerometerService extends Service {
                     float delta = Math.abs(event.values[i] - lastGeoMagneticValues[i]);
                     if (delta >= GEOMAGNETIC_THRESHOLD) {
                         Log.d(TAG, String.format("Geomagnetic change of %f", delta));
+                        logEntry("Geomagnetic sensor triggered", true);
                         reset = true;
                     }
                 }
@@ -140,6 +141,7 @@ public class AccelerometerService extends Service {
             float proximityValue = event.values[0];
             if (proximityValue < event.sensor.getMaximumRange()) {
                 Log.d(TAG, String.format("Proximity triggered with a value of %f", event.values[0]));
+                logEntry("Proximity sensor triggered", true);
                 reset = true;
             }
 
@@ -173,6 +175,7 @@ public class AccelerometerService extends Service {
             acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
             Log.d(TAG, String.format("acceleration: %f", acceleration));
             if (acceleration >= ACCELERATION_THRESHOLD) {
+                logEntry("Accelerometer sensor triggered", true);
                 reset = true;
             }
         }
