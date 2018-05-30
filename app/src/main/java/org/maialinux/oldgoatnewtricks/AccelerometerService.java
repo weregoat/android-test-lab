@@ -35,10 +35,10 @@ public class AccelerometerService extends Service {
         to detect movement while carrying the phone around.
         Remember this is about detecting when I am inactive over a long period, presumed dead.
      */
-    private static final long SLEEP_INTERVAL = 10000; //  Thirty seconds between checks
-    private static final long LISTENING_INTERVAL = 8000; // Listen for two seconds
+    private static final long SLEEP_INTERVAL = 30000; //  Thirty seconds between checks
+    private static final long LISTENING_INTERVAL = 5000; // Listen for five seconds
     private static final double ACCELERATION_THRESHOLD = 0.5f; // This much acceleration to trigger movement
-    private static final double GEOMAGNETIC_THRESHOLD = 2.0f; // This much change on any axis to trigger rest
+    private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
 
     /*
      * time smoothing constant for low-pass filter
@@ -79,8 +79,7 @@ public class AccelerometerService extends Service {
                 logEntry("Accelerometer Service sent reset message", false);
                 /* After a reset, sleep for a longer time */
                 SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-                AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG);
-                delay = AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG)*(1000/2);
+                delay = AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG)*(60000/10);
                 logEntry(String.format("Accelerometer service sleeping for %d seconds", delay/1000), false);
             }
             accelHandler.postDelayed(this, delay);
@@ -116,9 +115,10 @@ public class AccelerometerService extends Service {
                 for (int i = 0; i < 3; i++) {
                     float delta = Math.abs(event.values[i] - lastGeoMagneticValues[i]);
                     if (delta >= GEOMAGNETIC_THRESHOLD) {
-                        Log.d(TAG, String.format("Geomagnetic change of %f", delta));
+                        logEntry(String.format("Geomagnetic change of %f", delta), false);
                         logEntry("Geomagnetic sensor triggered", true);
                         reset = true;
+                        break;
                     }
                 }
             }
