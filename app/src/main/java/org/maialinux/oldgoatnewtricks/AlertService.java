@@ -257,6 +257,7 @@ public class AlertService extends Service {
                         .toFormatter();
                 alertTime = System.currentTimeMillis() + sleepDelay + interval; // Move the next alert to wake-up time + interval.
                 logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
+                stopSensorService();
             } else {
                 sleepDelay = 0;
             }
