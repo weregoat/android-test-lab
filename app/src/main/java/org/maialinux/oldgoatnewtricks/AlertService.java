@@ -116,6 +116,7 @@ public class AlertService extends Service {
                         }
                     }
                 }
+                scheduleJob(delay/10);
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
@@ -127,6 +128,7 @@ public class AlertService extends Service {
                 stopRingtone();
                 sendSMS(phoneNumber, "Test SMS");
                 timerHandler.removeCallbacks(timerRunnable);
+                stopSensorService();
                 stopSelf();
             }
 
@@ -136,7 +138,6 @@ public class AlertService extends Service {
             }
             logEntry(notificationText, true);
             logEntry(String.format("Next check at %s", formatter.print(new DateTime(System.currentTimeMillis() + delay))), false);
-            scheduleJob(delay/10);
             timerHandler.postDelayed(this, delay);
 
         }
