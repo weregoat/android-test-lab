@@ -102,18 +102,20 @@ public class AlertService extends Service {
                     stopRingtone();
                     playRingtone();
                     alertTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
+                    logEntry(String.format("Alert %d; %s", alertCounts, String.format("Alert triggering at %s", formatter.print(new DateTime(alertTime)))), true);
                 } else {
                     long minutes = millis / 60000;
                     long seconds = millis / 1000 - (minutes * 60); // Remainder
                     String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
                     logEntry(message, false);
                     delay = millis;
-                    if (alertCounts == 0) {
-                        if (delay < MIN_DELAY) {
-                            delay = MIN_DELAY;
-                        } else if (delay > MAX_DELAY) {
-                            delay = MAX_DELAY;
-                        }
+                    logEntry(String.format("Alert triggering at %s", formatter.print(new DateTime(alertTime))), true);
+                }
+                if (alertCounts == 0) {
+                    if (delay < MIN_DELAY) {
+                        delay = MIN_DELAY;
+                    } else if (delay > MAX_DELAY) {
+                        delay = MAX_DELAY;
                     }
                 }
                 scheduleJob(delay/10);
@@ -127,16 +129,10 @@ public class AlertService extends Service {
             if (alertCounts >= maxAlerts) {
                 stopRingtone();
                 sendSMS(phoneNumber, "Test SMS");
-                timerHandler.removeCallbacks(timerRunnable);
                 stopSensorService();
                 stopSelf();
             }
 
-            String notificationText = String.format("Alert triggering at %s", formatter.print(new DateTime(alertTime)));
-            if (alertCounts > 0) {
-                notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
-            }
-            logEntry(notificationText, true);
             logEntry(String.format("Next check at %s", formatter.print(new DateTime(System.currentTimeMillis() + delay))), false);
             timerHandler.postDelayed(this, delay);
 
@@ -342,12 +338,16 @@ public class AlertService extends Service {
     {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*60000;
-        alertInterval = Math.round(interval/6);
+
         wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
         maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
         phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
         Log.d(TAG, String.format("Max alerts: %d", maxAlerts));
+        alertInterval = Math.round(interval/maxAlerts);
+        if (alertInterval < MIN_DELAY) {
+            alertInterval = MIN_DELAY*2;
+        }
         calculateSleepDateTimes();
     }
 
