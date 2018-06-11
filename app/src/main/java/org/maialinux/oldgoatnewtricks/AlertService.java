@@ -124,7 +124,9 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
                 stopSensorService();
-                sensorManager.unregisterListener(proximityEventListener);
+                if (proximityEventListener != null) {
+                    sensorManager.unregisterListener(proximityEventListener);
+                }
             }
             if (alertCounts >= maxAlerts) {
                 stopRingtone();

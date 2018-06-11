@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.util.Log;
 import android.widget.Toast;
 
+import java.util.EventListener;
 import java.util.List;
 
 
@@ -68,8 +69,8 @@ public class SensorJobService extends JobService {
     @Override
     public boolean onStopJob(JobParameters jobParameters) {
         reset = false;
-        sensorManager.unregisterListener(accelerometerEventListener);
-        sensorManager.unregisterListener(geoMagneticEventListener);
+        unregisterListener(accelerometerEventListener);
+        unregisterListener(geoMagneticEventListener);
         return false;
     }
 
@@ -107,8 +108,8 @@ public class SensorJobService extends JobService {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        sensorManager.unregisterListener(accelerometerEventListener);
-        sensorManager.unregisterListener(geoMagneticEventListener);
+        unregisterListener(accelerometerEventListener);
+        unregisterListener(geoMagneticEventListener);
         stopSelf();
         Log.i(TAG, "Service destroyed");
     }
@@ -190,8 +191,14 @@ public class SensorJobService extends JobService {
         sendBroadcast(broadcastIntent);
         Log.d(TAG, "Broadcast reset sent");
         /* No need to keep listening */
-        sensorManager.unregisterListener(accelerometerEventListener);
-        sensorManager.unregisterListener(geoMagneticEventListener);
+        unregisterListener(accelerometerEventListener);
+        unregisterListener(geoMagneticEventListener);
         reset = false;
+    }
+
+    private void unregisterListener(SensorEventListener listener) {
+        if (listener != null) {
+            sensorManager.unregisterListener(listener);
+        }
     }
 }
