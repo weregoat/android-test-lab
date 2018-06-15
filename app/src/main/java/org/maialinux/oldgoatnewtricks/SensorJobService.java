@@ -108,6 +108,7 @@ public class SensorJobService extends JobService {
     @Override
     public void onDestroy() {
         super.onDestroy();
+
         unregisterListener(accelerometerEventListener);
         unregisterListener(geoMagneticEventListener);
         stopSelf();
@@ -197,8 +198,12 @@ public class SensorJobService extends JobService {
     }
 
     private void unregisterListener(SensorEventListener listener) {
-        if (listener != null) {
-            sensorManager.unregisterListener(listener);
+        try {
+            if (listener != null) {
+                sensorManager.unregisterListener(listener);
+            }
+        } catch (NullPointerException npe) {
+            Log.d(TAG, npe.getMessage());
         }
     }
 }

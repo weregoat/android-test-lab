@@ -1,6 +1,6 @@
 package org.maialinux.oldgoatnewtricks;
 
-import android.app.ActivityManager;
+
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -80,7 +80,8 @@ public class AlertService extends Service {
     NotificationCompat.Builder mBuilder;
     Notification notification;
 
-    private int mJobId = 0;
+    private int sensorJobId = 11;
+    private int alarmJobId = 111;
     private ComponentName mServiceComponent;
 
     private SensorManager sensorManager;
@@ -91,16 +92,14 @@ public class AlertService extends Service {
         @Override
         public void run() {
             long delay;
-            stopRingtone();
             DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
             if (isSleepTime() == false) {
                 startProximitySensor();
                 long millis = alertTime - System.currentTimeMillis();
                 if (millis <= 0) {
+                    scheduleAlarmJob();
                     alertCounts++;
-                    delay = 10000; // Rings for about ten seconds
-                    stopRingtone();
-                    playRingtone();
+                    delay = AlarmJobService.ALARM_DURATION*3; // Enough time for the alert to ring
                     alertTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
                     logEntry(String.format("Alert %d; %s", alertCounts, String.format("Alert triggering at %s", formatter.print(new DateTime(alertTime)))), true);
                 } else {
@@ -118,18 +117,19 @@ public class AlertService extends Service {
                         delay = MAX_DELAY;
                     }
                 }
-                scheduleJob(delay/10);
+                scheduleJob(delay/2);
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
                 stopSensorService();
                 if (proximityEventListener != null) {
+                    Log.d(TAG, "Unregister proximity event listener");
                     sensorManager.unregisterListener(proximityEventListener);
+                    proximityRunning = false;
                 }
             }
             if (alertCounts >= maxAlerts) {
-                stopRingtone();
                 sendSMS(phoneNumber, "Test SMS");
                 stopSensorService();
                 stopSelf();
@@ -159,7 +159,7 @@ public class AlertService extends Service {
 
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
-        DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
+        DateTimeFormatter formatter = ISODateTimeFormat.timeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
         resetIntent.putExtra(AlertService.RESET_MESSAGE, true);
@@ -195,19 +195,6 @@ public class AlertService extends Service {
         return null;
     }
 
-
-    public void playRingtone() {
-        //Log.d(TAG, "play ringtone");
-        if (! ringtone.isPlaying()) {
-            ringtone.play();
-        }
-    }
-
-    public void stopRingtone() {
-        //Log.d(TAG, "stop ringtone");
-        ringtone.stop();
-    }
-
     public void startTimer() {
         alertCounts = 0;
         reloadConfig();
@@ -231,12 +218,14 @@ public class AlertService extends Service {
             LocalDateTime now = LocalDateTime.now();
             /* We are between sleep time and wake-up time */
             if (now.isAfter(sleepDateTime)) {
+                sleep = true;
                 /* This is to correctly calculate the delay time till wake-up */
                 if (wakeUpDateTime.isBefore(now)) {
                     wakeUpDateTime = wakeUpDateTime.plusDays(1);
+                    sleep = false; // Don't go to sleep if the sleeping period is in the future.
                 }
                 sleepDateTime = sleepDateTime.plusDays(1);
-                sleep = true;
+
             } else if (now.isBefore(wakeUpDateTime)) {
                 if (sleepDateTime.isAfter(wakeUpDateTime)) {
                     sleep = true;
@@ -276,8 +265,8 @@ public class AlertService extends Service {
     @Override
     public void onDestroy()
     {
+        super.onDestroy();
         logEntry("Destroy alert service", true);
-        this.stopRingtone();
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
         notificationManager.cancel(0);
@@ -296,7 +285,6 @@ public class AlertService extends Service {
            }
            if (endMessage == true) {
                logEntry("Stop service", false);
-               stopRingtone();
                stopSelf();
            }
         }
@@ -305,8 +293,9 @@ public class AlertService extends Service {
 
     private void stopSensorService()
     {
+        Log.d(TAG, "Stop sensor service");
         JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        tm.cancelAll();
+        tm.cancel(sensorJobId);
         Intent serviceIntent = new Intent(this, SensorJobService.class);
         stopService(serviceIntent);
     }
@@ -419,19 +408,24 @@ public class AlertService extends Service {
     }
 
     private void scheduleJob(long period) {
-        if (period < MIN_DELAY) {
-            period = MIN_DELAY;
-        }
-        Log.d(TAG, String.format("Period = %d seconds", Math.round(period/1000)));
         JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        JobInfo.Builder builder = new JobInfo.Builder(mJobId, mServiceComponent);
+        if (isSleepTime() == false) {
+            if (period < MIN_DELAY) {
+                period = MIN_DELAY;
+            }
+            Log.d(TAG, String.format("Period = %d seconds", Math.round(period / 1000)));
 
-        builder.setPeriodic(period);
-        //builder.setMinimumLatency(12000);
-        //builder.setOverrideDeadline(MIN_DELAY/2);
-        // Schedule job
-        Log.d(TAG, "Scheduling job");
-        tm.schedule(builder.build());
+            JobInfo.Builder builder = new JobInfo.Builder(sensorJobId, mServiceComponent);
+
+            builder.setPeriodic(period);
+            //builder.setMinimumLatency(12000);
+            //builder.setOverrideDeadline(MIN_DELAY/2);
+            // Schedule job
+            Log.d(TAG, "Scheduling job");
+            tm.schedule(builder.build());
+        } else {
+            tm.cancelAll();
+        }
     }
 
     private final SensorEventListener proximityEventListener = new SensorEventListener() {
@@ -444,7 +438,10 @@ public class AlertService extends Service {
             if (proximityValue < event.sensor.getMaximumRange()) {
                Log.d(TAG, String.format("Proximity triggered with a value of %f", event.values[0]));
                logEntry("Proximity sensor triggered", true);
-               reset();
+               Intent resetIntent = new Intent(AlertService.BROADCAST_ACTION);
+               resetIntent.putExtra(AlertService.RESET_MESSAGE, true);
+               sendBroadcast(resetIntent);
+               //reset();
             }
 
         }
@@ -458,7 +455,6 @@ public class AlertService extends Service {
     private void reset() {
         alertTime = System.currentTimeMillis() + interval;
         logEntry(String.format("Interval: %d", interval/1000), false);
-        stopRingtone();
         logEntry("Reset timer", false);
         alertCounts = 0;
         reloadConfig();
@@ -468,6 +464,7 @@ public class AlertService extends Service {
 
     private void startProximitySensor() {
         if (proximityRunning == false) {
+            Log.d(TAG, "Start proximity sensor");
             List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
             for (int i = 0; i < sensorList.size(); i++) {
                 Log.d(TAG, sensorList.get(i).getName());
@@ -478,7 +475,18 @@ public class AlertService extends Service {
                     break;
                 }
             }
+        } else {
+            Log.d(TAG, "Proximity sensor already running");
         }
     }
 
+    private void scheduleAlarmJob() {
+        Log.d(TAG, "Alarm scheduled");
+        JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        tm.cancel(alarmJobId);
+        ComponentName serviceComponent = new ComponentName(this, AlarmJobService.class);
+        JobInfo.Builder builder = new JobInfo.Builder(alarmJobId, serviceComponent);
+        builder.setOverrideDeadline(AlarmJobService.ALARM_DURATION);
+        tm.schedule(builder.build());
+    }
 }
