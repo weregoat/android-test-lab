@@ -35,8 +35,8 @@ public class AccelerometerService extends Service {
         to detect movement while carrying the phone around.
         Remember this is about detecting when I am inactive over a long period, presumed dead.
      */
-    private static final long SLEEP_INTERVAL = 30000; //  Thirty seconds between checks
-    private static final long LISTENING_INTERVAL = 5000; // Listen for five seconds
+    private static final long SLEEP_INTERVAL = 600000; //  Ten minutes between checks
+    private static final long LISTENING_INTERVAL = 30000; // Listen for 30 seconds
     private static final double ACCELERATION_THRESHOLD = 0.5f; // This much acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
 
