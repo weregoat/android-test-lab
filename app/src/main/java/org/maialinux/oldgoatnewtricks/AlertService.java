@@ -68,6 +68,7 @@ public class AlertService extends Service {
     String phoneNumber;
     boolean proximityRunning = false;
     boolean sleep = false;
+    long currentPeriod;
 
     Intent broadCastIntent;
     Intent resetIntent;
@@ -117,7 +118,7 @@ public class AlertService extends Service {
                         delay = MAX_DELAY;
                     }
                 }
-                scheduleJob(delay/2);
+                scheduleJob(delay);
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
@@ -411,21 +412,25 @@ public class AlertService extends Service {
         JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (isSleepTime() == false) {
             if (period < MIN_DELAY) {
-                period = MIN_DELAY;
+                 period = MIN_DELAY;
             }
-            Log.d(TAG, String.format("Period = %d seconds", Math.round(period / 1000)));
-
-            JobInfo.Builder builder = new JobInfo.Builder(sensorJobId, mServiceComponent);
-
-            builder.setPeriodic(period);
-            //builder.setMinimumLatency(12000);
-            //builder.setOverrideDeadline(MIN_DELAY/2);
-            // Schedule job
-            Log.d(TAG, "Scheduling job");
-            tm.schedule(builder.build());
+            if (period != currentPeriod) {
+                stopSensorService();
+                Log.d(TAG, String.format("Period = %d seconds", Math.round(period / 1000)));
+                JobInfo.Builder builder = new JobInfo.Builder(sensorJobId, mServiceComponent);
+                builder.setPeriodic(period);
+                currentPeriod = period;
+                //builder.setMinimumLatency(12000);
+                //builder.setOverrideDeadline(MIN_DELAY/2);
+                // Schedule job
+                Log.d(TAG, "Scheduling job");
+                tm.schedule(builder.build());
+            }
         } else {
-            tm.cancelAll();
+            stopSensorService();
+            //tm.cancelAll();
         }
+
     }
 
     private final SensorEventListener proximityEventListener = new SensorEventListener() {
