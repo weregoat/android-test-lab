@@ -45,6 +45,8 @@ public class AlertService extends Service {
     public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.alert_service_broadcast";
     public static final String RESET_MESSAGE = "reset";
     public static final String END_MESSAGE = "stop";
+    public static final long MIN_DELAY = 30000;
+    public static final long MAX_DELAY = 600000;
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -78,17 +80,22 @@ public class AlertService extends Service {
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            stopRingtone();
-            long delay;
+            long delay = 0;
             DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
 
             if (isSleepTime() == false) {
                 long millis = expirationTime - System.currentTimeMillis();
                 if (millis <= 0) {
                     alertCounts++;
-                    delay = AlarmJob.ALARM_DURATION*5; // Waits for the job to start and end
-                    scheduleAlarmJob();
-                    expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
+                    if (alertCounts <= maxAlerts) {
+                        delay = alertInterval;
+                        if (delay < AlarmJob.ALARM_DURATION) {
+                            delay = AlarmJob.ALARM_DURATION;
+                        }
+                        scheduleAlarmJob();
+                        expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
+                    }
+
                 } else {
                     long minutes = millis / 60000;
                     long seconds = millis / 1000 - (minutes * 60); // Remainder
@@ -100,12 +107,15 @@ public class AlertService extends Service {
                             delay = millis;
                         }
                     } else {
-                        delay = ALERT_DELAY;
+                        delay = alertInterval;
                     }
 
                 }
                 if (accelerometerServiceStarted == false) {
                     startAccelerometerService();
+                }
+                if (delay > MAX_DELAY) {
+                    delay = MAX_DELAY;
                 }
 
             } else {
@@ -114,19 +124,22 @@ public class AlertService extends Service {
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
                 stopAccelerometerService();
             }
-            if (alertCounts >= maxAlerts) {
-                stopRingtone();
-                sendSMS(phoneNumber, "Test SMS");
-                timerHandler.removeCallbacks(timerRunnable);
-                stopAccelerometerService();
-                stopSelf();
-            }
+
 
             String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
             if (alertCounts > 0) {
                 notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
+                if (alertCounts > maxAlerts) {
+                    sendSMS(phoneNumber, "Test SMS");
+                    timerHandler.removeCallbacks(timerRunnable);
+                    stopAccelerometerService();
+                    stopSelf();
+                }
             }
             logEntry(notificationText, true);
+            if (delay < MIN_DELAY) {
+                delay = MIN_DELAY;
+            }
             timerHandler.postDelayed(this, delay);
 
         }
@@ -181,18 +194,6 @@ public class AlertService extends Service {
         return null;
     }
 
-
-    public void playRingtone() {
-        //Log.d(TAG, "play ringtone");
-        if (! ringtone.isPlaying()) {
-            ringtone.play();
-        }
-    }
-
-    public void stopRingtone() {
-        //Log.d(TAG, "stop ringtone");
-        ringtone.stop();
-    }
 
     public void startTimer() {
         alertCounts = 0;
@@ -262,7 +263,6 @@ public class AlertService extends Service {
     public void onDestroy()
     {
         logEntry("Destroy alert service", true);
-        this.stopRingtone();
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
         stopAccelerometerService();
@@ -277,7 +277,6 @@ public class AlertService extends Service {
            if (resetMessage == true) {
                expirationTime = System.currentTimeMillis() + interval;
                logEntry(String.format("Interval: %d", interval/1000), false);
-               stopRingtone();
                logEntry("Reset timer", false);
                alertCounts = 0;
                reloadConfig();
@@ -286,7 +285,6 @@ public class AlertService extends Service {
            }
            if (endMessage == true) {
                logEntry("Stop service", false);
-               stopRingtone();
                stopSelf();
            }
         }
@@ -333,12 +331,11 @@ public class AlertService extends Service {
     {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*60000;
-        alertInterval = Math.round(interval/6);
         wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
         maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
         phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
-        Log.d(TAG, String.format("Max alerts: %d", maxAlerts));
+        alertInterval = Math.round(interval/maxAlerts);
         calculateSleepDateTimes();
     }
 
@@ -411,10 +408,12 @@ public class AlertService extends Service {
         Log.d(TAG, "Alarm scheduled to run");
         JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
         tm.cancel(alarmJobID); // Cancel already running alarms
-        ComponentName serviceComponent = new ComponentName(this, AlarmJob.class);
-        JobInfo.Builder builder = new JobInfo.Builder(alarmJobID, serviceComponent);
-        builder.setOverrideDeadline(AlarmJob.ALARM_DURATION);
-        tm.schedule(builder.build());
+        if (alertCounts <= maxAlerts) {
+            ComponentName serviceComponent = new ComponentName(this, AlarmJob.class);
+            JobInfo.Builder builder = new JobInfo.Builder(alarmJobID, serviceComponent);
+            builder.setOverrideDeadline(AlarmJob.ALARM_DURATION);
+            tm.schedule(builder.build());
+        }
     }
 
 }
