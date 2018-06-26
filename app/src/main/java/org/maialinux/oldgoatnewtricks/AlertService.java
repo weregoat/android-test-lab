@@ -3,7 +3,10 @@ package org.maialinux.oldgoatnewtricks;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -44,7 +47,6 @@ public class AlertService extends Service {
     public static final String END_MESSAGE = "stop";
 
 
-
     //private final IBinder mBinder = new LocalBinder();
     private final String TAG = "AlertService";
     Ringtone ringtone;
@@ -69,6 +71,8 @@ public class AlertService extends Service {
     NotificationCompat.Builder mBuilder;
     Notification notification;
 
+    private final int alarmJobID = 8787;
+
 
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
@@ -82,11 +86,9 @@ public class AlertService extends Service {
                 long millis = expirationTime - System.currentTimeMillis();
                 if (millis <= 0) {
                     alertCounts++;
-                    delay = 10000; // Rings for about ten seconds
-                    stopRingtone();
-                    playRingtone();
+                    delay = AlarmJob.ALARM_DURATION*5; // Waits for the job to start and end
+                    scheduleAlarmJob();
                     expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
-
                 } else {
                     long minutes = millis / 60000;
                     long seconds = millis / 1000 - (minutes * 60); // Remainder
@@ -403,6 +405,16 @@ public class AlertService extends Service {
             logEntry("SMS sent", true);
         }
 
+    }
+
+    private void scheduleAlarmJob() {
+        Log.d(TAG, "Alarm scheduled to run");
+        JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        tm.cancel(alarmJobID); // Cancel already running alarms
+        ComponentName serviceComponent = new ComponentName(this, AlarmJob.class);
+        JobInfo.Builder builder = new JobInfo.Builder(alarmJobID, serviceComponent);
+        builder.setOverrideDeadline(AlarmJob.ALARM_DURATION);
+        tm.schedule(builder.build());
     }
 
 }
