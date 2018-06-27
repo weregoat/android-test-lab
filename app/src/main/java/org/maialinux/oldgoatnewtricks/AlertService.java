@@ -11,6 +11,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -33,6 +35,12 @@ import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 public class AlertService extends Service {
 
 
@@ -47,6 +55,8 @@ public class AlertService extends Service {
     public static final String END_MESSAGE = "stop";
     public static final long MIN_DELAY = 30000;
     public static final long MAX_DELAY = 600000;
+    private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
+    private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -61,13 +71,16 @@ public class AlertService extends Service {
     String phoneNumber;
 
     Intent broadCastIntent;
-    Intent serviceIntent;
+    Intent accelerometerSensorIntent;
+    Intent proximitySensorIntent;
+    Intent geoMagneticSensorIntent;
     Intent resetIntent;
     boolean accelerometerServiceStarted = false;
     LocalDateTime wakeUpDateTime;
     LocalTime wakeUpTime;
     LocalTime sleepTime;
     LocalDateTime sleepDateTime;
+    HashMap runningServices = new HashMap<String, Intent>();
 
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
@@ -111,8 +124,8 @@ public class AlertService extends Service {
                     }
 
                 }
-                if (accelerometerServiceStarted == false) {
-                    startAccelerometerService();
+                if (runningServices.isEmpty()) {
+                    startServices();
                 }
                 if (delay > MAX_DELAY) {
                     delay = MAX_DELAY;
@@ -122,7 +135,7 @@ public class AlertService extends Service {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
-                stopAccelerometerService();
+                stopServices();
             }
 
 
@@ -132,7 +145,6 @@ public class AlertService extends Service {
                 if (alertCounts > maxAlerts) {
                     sendSMS(phoneNumber, "Test SMS");
                     timerHandler.removeCallbacks(timerRunnable);
-                    stopAccelerometerService();
                     stopSelf();
                 }
             }
@@ -163,7 +175,7 @@ public class AlertService extends Service {
 
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
-        serviceIntent = new Intent(this, AccelerometerService.class);
+        startServices();
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
@@ -265,8 +277,8 @@ public class AlertService extends Service {
         logEntry("Destroy alert service", true);
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
-        stopAccelerometerService();
         notificationManager.cancel(0);
+        stopServices();
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -289,18 +301,6 @@ public class AlertService extends Service {
            }
         }
     };
-
-    private void startAccelerometerService()
-    {
-        startService(serviceIntent);
-        accelerometerServiceStarted = true;
-    }
-
-    private void stopAccelerometerService()
-    {
-        stopService(serviceIntent);
-        accelerometerServiceStarted = false;
-    }
 
     private void calculateSleepDateTimes()
     {
@@ -415,5 +415,63 @@ public class AlertService extends Service {
             tm.schedule(builder.build());
         }
     }
+
+    private void startServices() {
+        stopServices();
+        SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
+        for (int i=0; i <sensorList.size(); i++) {
+            Log.d(TAG, sensorList.get(i).getName());
+            int sensorType = sensorList.get(i).getType();
+            switch(sensorType) {
+                case Sensor.TYPE_ACCELEROMETER:
+                case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
+                case Sensor.TYPE_MAGNETIC_FIELD:
+                    if (runningServices.containsKey(ACCELEROMETER_SENSOR_KEY) == false) {
+                        accelerometerSensorIntent = new Intent(this, AccelerometerService.class);
+                        runningServices.put(ACCELEROMETER_SENSOR_KEY, accelerometerSensorIntent);
+                    }
+                    break;
+                case Sensor.TYPE_PROXIMITY:
+                    if (runningServices.containsKey(PROXIMITY_SENSOR_KEY) == false) {
+                        proximitySensorIntent = new Intent(this, ProximityAlertService.class);
+                        runningServices.put(PROXIMITY_SENSOR_KEY, proximitySensorIntent);
+                    }
+                    break;
+
+            }
+        }
+        Iterator iterator = runningServices.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
+            String serviceName = entry.getKey();
+            Intent intent = entry.getValue();
+            if (intent != null) {
+                ComponentName name = startService(intent);
+                if (name != null) {
+                    Log.d(TAG, String.format("%s service started", serviceName));
+                }
+            }
+        }
+
+    }
+
+    private void stopServices() {
+        Iterator iterator = runningServices.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
+            String serviceName = entry.getKey();
+            Intent intent = entry.getValue();
+            if (intent != null) {
+                if (stopService(intent) == true) {
+                    Log.d(TAG, String.format("%s service stopped", serviceName));
+                } else {
+                    Log.w(TAG, String.format("failed to stop %s service", serviceName));
+                }
+            }
+        }
+        runningServices.clear();
+    }
+
 
 }

@@ -72,9 +72,9 @@ public class AccelerometerService extends Service {
                 delay = LISTENING_INTERVAL;
             }
             if (reset == true) {
+                reset = false;
                 broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
                 sendBroadcast(broadCastIntent);
-                reset = false;
                 stopListening();
                 logEntry("Accelerometer Service sent reset message", false);
                 /* After a reset, sleep for a longer time */
@@ -87,12 +87,23 @@ public class AccelerometerService extends Service {
 
     };
 
+    private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            boolean resetMessage = intent.getBooleanExtra(AlertService.RESET_MESSAGE, false);
+            if (resetMessage == true) {
+                stopListening();
+            }
+        }
+    };
+
     public AccelerometerService() {
 
     }
 
     @Override
     public void onCreate() {
+        registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
         broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
         logEntry("Create accelerometer service", false);
         accelRunnable.run();
@@ -118,6 +129,7 @@ public class AccelerometerService extends Service {
                         logEntry(String.format("Geomagnetic change of %f", delta), false);
                         logEntry("Geomagnetic sensor triggered", true);
                         reset = true;
+                        sendResetBroadcast();
                         break;
                     }
                 }
@@ -132,29 +144,7 @@ public class AccelerometerService extends Service {
         }
     };
 
-    private final SensorEventListener proximityEventListener = new SensorEventListener() {
 
-
-        @Override
-
-        public void onSensorChanged(SensorEvent event) {
-            if (reset == false) {
-                float proximityValue = event.values[0];
-                if (proximityValue < event.sensor.getMaximumRange()) {
-                    Log.d(TAG, String.format("Proximity triggered with a value of %f", event.values[0]));
-                    logEntry("Proximity sensor triggered", true);
-                    reset = true;
-                }
-            }
-
-
-        }
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
-        }
-    };
 
     private final SensorEventListener accelerometerEventListener = new SensorEventListener() {
 
@@ -180,6 +170,7 @@ public class AccelerometerService extends Service {
                 if (acceleration >= ACCELERATION_THRESHOLD) {
                     logEntry("Accelerometer sensor triggered", true);
                     reset = true;
+                    sendResetBroadcast();
                 }
             }
         }
@@ -226,9 +217,6 @@ public class AccelerometerService extends Service {
                     //case Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED:
                         sensorManager.registerListener(geoMagneticEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
                         break;
-                    case Sensor.TYPE_PROXIMITY:
-                        sensorManager.registerListener(proximityEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL);
-                        break;
                 }
             }
             //sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
@@ -242,7 +230,6 @@ public class AccelerometerService extends Service {
             //logEntry("Stop listening to accelerometer", false);
             sensorManager.unregisterListener(accelerometerEventListener);
             sensorManager.unregisterListener(geoMagneticEventListener);
-            sensorManager.unregisterListener(proximityEventListener);
             sensorRunning = false;
         }
     }
@@ -255,6 +242,12 @@ public class AccelerometerService extends Service {
         Intent logIntent = new Intent(AlertService.BROADCAST_ACTION);
         logIntent.putExtra("message", message);
         sendBroadcast(logIntent);
+    }
+
+    private void sendResetBroadcast() {
+        broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
+        sendBroadcast(broadCastIntent);
+        reset = true;
     }
 
 

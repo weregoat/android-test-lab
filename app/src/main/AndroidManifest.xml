@@ -25,7 +25,7 @@
             android:name=".AlertService"
             android:enabled="true"
             android:exported="true"
-            android:permission="android.permission.SEND_SMS"/>
+            android:permission="android.permission.SEND_SMS" />
         <service
             android:name=".AccelerometerService"
             android:enabled="true"
@@ -40,6 +40,10 @@
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service
+            android:name=".ProximityAlertService"
+            android:enabled="true"
+            android:exported="true"></service>
     </application>
 
 </manifest>
