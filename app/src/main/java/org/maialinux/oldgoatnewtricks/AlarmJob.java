@@ -65,6 +65,7 @@ public class AlarmJob extends JobService {
             boolean resetMessage = intent.getBooleanExtra(AlertService.RESET_MESSAGE, false);
             boolean endMessage = intent.getBooleanExtra(AlertService.END_MESSAGE, false);
             if (resetMessage == true || endMessage == true) {
+                ringtone.stop();
                 stopSelf();
             }
         }
