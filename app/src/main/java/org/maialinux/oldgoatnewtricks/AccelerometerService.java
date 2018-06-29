@@ -193,6 +193,7 @@ public class AccelerometerService extends Service {
         accelHandler.removeCallbacks(accelRunnable);
         stopListening();
         logEntry("Destroy accelerometer service", true);
+        unregisterReceiver(broadcastReceiver);
         super.onDestroy();
 
     }
