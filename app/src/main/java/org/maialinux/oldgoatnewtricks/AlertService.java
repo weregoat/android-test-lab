@@ -3,11 +3,16 @@ package org.maialinux.oldgoatnewtricks;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -16,6 +21,7 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
+import android.telephony.SmsManager;
 import android.util.Log;
 
 
@@ -29,6 +35,11 @@ import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 public class AlertService extends Service {
 
@@ -42,7 +53,10 @@ public class AlertService extends Service {
     public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.alert_service_broadcast";
     public static final String RESET_MESSAGE = "reset";
     public static final String END_MESSAGE = "stop";
-
+    public static final long MIN_DELAY = 30000;
+    public static final long MAX_DELAY = 600000;
+    private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
+    private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -52,38 +66,48 @@ public class AlertService extends Service {
     int alertCounts = 0;
     long sleepDelay;
     long interval;
+    long alertInterval;
     int maxAlerts = MAX_ALERTS;
+    String phoneNumber;
 
     Intent broadCastIntent;
-    Intent serviceIntent;
+    Intent accelerometerSensorIntent;
+    Intent proximitySensorIntent;
+    Intent geoMagneticSensorIntent;
     Intent resetIntent;
     boolean accelerometerServiceStarted = false;
     LocalDateTime wakeUpDateTime;
     LocalTime wakeUpTime;
     LocalTime sleepTime;
     LocalDateTime sleepDateTime;
+    HashMap runningServices = new HashMap<String, Intent>();
 
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
     Notification notification;
+
+    private final int alarmJobID = 8787;
 
 
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            stopRingtone();
-            long delay;
+            long delay = 0;
             DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
 
             if (isSleepTime() == false) {
                 long millis = expirationTime - System.currentTimeMillis();
                 if (millis <= 0) {
                     alertCounts++;
-                    delay = 10000; // Rings for about ten seconds
-                    stopRingtone();
-                    playRingtone();
-                    expirationTime = System.currentTimeMillis() + ALERT_INTERVAL; // Reset the expiration time
+                    if (alertCounts <= maxAlerts) {
+                        delay = alertInterval;
+                        if (delay < AlarmJob.ALARM_DURATION) {
+                            delay = AlarmJob.ALARM_DURATION;
+                        }
+                        scheduleAlarmJob();
+                        expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
+                    }
 
                 } else {
                     long minutes = millis / 60000;
@@ -96,47 +120,43 @@ public class AlertService extends Service {
                             delay = millis;
                         }
                     } else {
-                        delay = ALERT_DELAY;
+                        delay = alertInterval;
                     }
 
                 }
-                if (accelerometerServiceStarted == false) {
-                    startAccelerometerService();
+                if (runningServices.isEmpty()) {
+                    startServices();
+                }
+                if (delay > MAX_DELAY) {
+                    delay = MAX_DELAY;
                 }
 
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
-                stopAccelerometerService();
+                stopServices();
             }
-            if (alertCounts >= maxAlerts) {
-                stopRingtone();
-                logEntry("Send SMS", true);
-                timerHandler.removeCallbacks(timerRunnable);
-                stopAccelerometerService();
-                stopSelf();
-            }
+
 
             String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
             if (alertCounts > 0) {
                 notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
+                if (alertCounts > maxAlerts) {
+                    sendSMS(phoneNumber, "Test SMS");
+                    timerHandler.removeCallbacks(timerRunnable);
+                    stopSelf();
+                }
             }
             logEntry(notificationText, true);
+            if (delay < MIN_DELAY) {
+                delay = MIN_DELAY;
+            }
             timerHandler.postDelayed(this, delay);
 
         }
 
     };
-
-    /*
-    public class LocalBinder extends Binder {
-
-        AlertService getService() {
-            return AlertService.this;
-        }
-    }
-    */
 
     public AlertService() {
 
@@ -155,7 +175,7 @@ public class AlertService extends Service {
 
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
-        serviceIntent = new Intent(this, AccelerometerService.class);
+        startServices();
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
@@ -175,6 +195,7 @@ public class AlertService extends Service {
         notification = mBuilder.build();
         startForeground(99, notification);
         logEntry(String.format("Interval: %d", interval/1000), false);
+
     }
 
 
@@ -185,18 +206,6 @@ public class AlertService extends Service {
         return null;
     }
 
-
-    public void playRingtone() {
-        //Log.d(TAG, "play ringtone");
-        if (! ringtone.isPlaying()) {
-            ringtone.play();
-        }
-    }
-
-    public void stopRingtone() {
-        //Log.d(TAG, "stop ringtone");
-        ringtone.stop();
-    }
 
     public void startTimer() {
         alertCounts = 0;
@@ -266,11 +275,10 @@ public class AlertService extends Service {
     public void onDestroy()
     {
         logEntry("Destroy alert service", true);
-        this.stopRingtone();
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
-        stopAccelerometerService();
         notificationManager.cancel(0);
+        stopServices();
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -281,7 +289,6 @@ public class AlertService extends Service {
            if (resetMessage == true) {
                expirationTime = System.currentTimeMillis() + interval;
                logEntry(String.format("Interval: %d", interval/1000), false);
-               stopRingtone();
                logEntry("Reset timer", false);
                alertCounts = 0;
                reloadConfig();
@@ -290,23 +297,10 @@ public class AlertService extends Service {
            }
            if (endMessage == true) {
                logEntry("Stop service", false);
-               stopRingtone();
                stopSelf();
            }
         }
     };
-
-    private void startAccelerometerService()
-    {
-        startService(serviceIntent);
-        accelerometerServiceStarted = true;
-    }
-
-    private void stopAccelerometerService()
-    {
-        stopService(serviceIntent);
-        accelerometerServiceStarted = false;
-    }
 
     private void calculateSleepDateTimes()
     {
@@ -336,10 +330,12 @@ public class AlertService extends Service {
     private void reloadConfig()
     {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*1000;
+        interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*60000;
         wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
-        maxAlerts = getInteger(sharedPreferences, "max_alerts", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
+        maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
+        phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
+        alertInterval = Math.round(interval/maxAlerts);
         calculateSleepDateTimes();
     }
 
@@ -385,5 +381,97 @@ public class AlertService extends Service {
         }
         return value;
     }
+
+    public static String getString(SharedPreferences sharedPreferences, String preferenceKey, String defaultValue, String tag) {
+       String value = defaultValue;
+        try {
+            if (sharedPreferences.contains(preferenceKey)) {
+                value = sharedPreferences.getString(preferenceKey, defaultValue);
+            }
+        } catch (Exception e) {
+            Log.e(tag, e.getMessage());
+        }
+        return value.trim();
+    }
+
+    private void sendSMS(String phoneNumber, String message)
+    {
+        if (!phoneNumber.isEmpty() && ! message.isEmpty()) {
+            SmsManager sms = SmsManager.getDefault();
+            sms.sendTextMessage(phoneNumber, null, message, null, null);
+            logEntry("SMS sent", true);
+        }
+
+    }
+
+    private void scheduleAlarmJob() {
+        Log.d(TAG, "Alarm scheduled to run");
+        JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        tm.cancel(alarmJobID); // Cancel already running alarms
+        if (alertCounts <= maxAlerts) {
+            ComponentName serviceComponent = new ComponentName(this, AlarmJob.class);
+            JobInfo.Builder builder = new JobInfo.Builder(alarmJobID, serviceComponent);
+            builder.setOverrideDeadline(AlarmJob.ALARM_DURATION);
+            tm.schedule(builder.build());
+        }
+    }
+
+    private void startServices() {
+        stopServices();
+        SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
+        for (int i=0; i <sensorList.size(); i++) {
+            Log.d(TAG, sensorList.get(i).getName());
+            int sensorType = sensorList.get(i).getType();
+            switch(sensorType) {
+                case Sensor.TYPE_ACCELEROMETER:
+                case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
+                case Sensor.TYPE_MAGNETIC_FIELD:
+                    if (runningServices.containsKey(ACCELEROMETER_SENSOR_KEY) == false) {
+                        accelerometerSensorIntent = new Intent(this, AccelerometerService.class);
+                        runningServices.put(ACCELEROMETER_SENSOR_KEY, accelerometerSensorIntent);
+                    }
+                    break;
+                case Sensor.TYPE_PROXIMITY:
+                    if (runningServices.containsKey(PROXIMITY_SENSOR_KEY) == false) {
+                        proximitySensorIntent = new Intent(this, ProximityAlertService.class);
+                        runningServices.put(PROXIMITY_SENSOR_KEY, proximitySensorIntent);
+                    }
+                    break;
+
+            }
+        }
+        Iterator iterator = runningServices.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
+            String serviceName = entry.getKey();
+            Intent intent = entry.getValue();
+            if (intent != null) {
+                ComponentName name = startService(intent);
+                if (name != null) {
+                    Log.d(TAG, String.format("%s service started", serviceName));
+                }
+            }
+        }
+
+    }
+
+    private void stopServices() {
+        Iterator iterator = runningServices.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
+            String serviceName = entry.getKey();
+            Intent intent = entry.getValue();
+            if (intent != null) {
+                if (stopService(intent) == true) {
+                    Log.d(TAG, String.format("%s service stopped", serviceName));
+                } else {
+                    Log.w(TAG, String.format("failed to stop %s service", serviceName));
+                }
+            }
+        }
+        runningServices.clear();
+    }
+
 
 }

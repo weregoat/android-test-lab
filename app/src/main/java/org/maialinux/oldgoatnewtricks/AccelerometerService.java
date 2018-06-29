@@ -24,6 +24,8 @@ import org.joda.time.LocalTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 
+import java.util.List;
+
 
 public class AccelerometerService extends Service {
 
@@ -33,10 +35,10 @@ public class AccelerometerService extends Service {
         to detect movement while carrying the phone around.
         Remember this is about detecting when I am inactive over a long period, presumed dead.
      */
-    private static final long SLEEP_INTERVAL = 30000; //  Thirty seconds between checks
-    private static final long LISTENING_INTERVAL = 2000; // Listen for two seconds
-    private static final double THRESHOLD = 0.5f; // This much acceleration to trigger movement
-
+    private static final long SLEEP_INTERVAL = 600000; //  Ten minutes between checks
+    private static final long LISTENING_INTERVAL = 30000; // Listen for 30 seconds
+    private static final double ACCELERATION_THRESHOLD = 0.5f; // This much acceleration to trigger movement
+    private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
 
     /*
      * time smoothing constant for low-pass filter
@@ -55,6 +57,7 @@ public class AccelerometerService extends Service {
     private Intent broadCastIntent;
     SensorManager sensorManager;
     private boolean sensorRunning = false;
+    private float[] lastGeoMagneticValues;
 
     Handler accelHandler = new Handler();
     Runnable accelRunnable = new Runnable() {
@@ -69,20 +72,29 @@ public class AccelerometerService extends Service {
                 delay = LISTENING_INTERVAL;
             }
             if (reset == true) {
+                reset = false;
                 broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
                 sendBroadcast(broadCastIntent);
-                reset = false;
                 stopListening();
                 logEntry("Accelerometer Service sent reset message", false);
                 /* After a reset, sleep for a longer time */
                 SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-                AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG);
-                delay = AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG)*(1000/2);
+                delay = AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG)*(60000/10);
                 logEntry(String.format("Accelerometer service sleeping for %d seconds", delay/1000), false);
             }
             accelHandler.postDelayed(this, delay);
         }
 
+    };
+
+    private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            boolean resetMessage = intent.getBooleanExtra(AlertService.RESET_MESSAGE, false);
+            if (resetMessage == true) {
+                stopListening();
+            }
+        }
     };
 
     public AccelerometerService() {
@@ -91,6 +103,7 @@ public class AccelerometerService extends Service {
 
     @Override
     public void onCreate() {
+        registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
         broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
         logEntry("Create accelerometer service", false);
         accelRunnable.run();
@@ -103,7 +116,37 @@ public class AccelerometerService extends Service {
         return null;
     }
 
-    private final SensorEventListener sensorEventListener = new SensorEventListener() {
+    private final SensorEventListener geoMagneticEventListener = new SensorEventListener() {
+
+
+        @Override
+
+        public void onSensorChanged(SensorEvent event) {
+            if (lastGeoMagneticValues != null && reset == false) {
+                for (int i = 0; i < 3; i++) {
+                    float delta = Math.abs(event.values[i] - lastGeoMagneticValues[i]);
+                    if (delta >= GEOMAGNETIC_THRESHOLD) {
+                        logEntry(String.format("Geomagnetic change of %f", delta), false);
+                        logEntry("Geomagnetic sensor triggered", true);
+                        reset = true;
+                        sendResetBroadcast();
+                        break;
+                    }
+                }
+            }
+            lastGeoMagneticValues = event.values.clone();
+
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+        }
+    };
+
+
+
+    private final SensorEventListener accelerometerEventListener = new SensorEventListener() {
 
 
         @Override
@@ -115,16 +158,20 @@ public class AccelerometerService extends Service {
          * @see https://www.built.io/blog/applying-low-pass-filter-to-android-sensor-s-readings
          */
         public void onSensorChanged(SensorEvent event) {
-            float x = event.values[0];
-            float y = event.values[1];
-            float z = event.values[2];
-            lastAcceleration = currentAcceleration;
-            currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
-            float delta = currentAcceleration - lastAcceleration;
-            acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
-            Log.d(TAG, String.format("acceleration: %f", acceleration));
-            if (acceleration >= THRESHOLD) {
-                reset = true;
+            if (reset == false) {
+                float x = event.values[0];
+                float y = event.values[1];
+                float z = event.values[2];
+                lastAcceleration = currentAcceleration;
+                currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
+                float delta = currentAcceleration - lastAcceleration;
+                acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
+                Log.d(TAG, String.format("acceleration: %f", acceleration));
+                if (acceleration >= ACCELERATION_THRESHOLD) {
+                    logEntry("Accelerometer sensor triggered", true);
+                    reset = true;
+                    sendResetBroadcast();
+                }
             }
         }
 
@@ -133,6 +180,7 @@ public class AccelerometerService extends Service {
 
         }
     };
+
 
 
     @Override
@@ -145,6 +193,7 @@ public class AccelerometerService extends Service {
         accelHandler.removeCallbacks(accelRunnable);
         stopListening();
         logEntry("Destroy accelerometer service", true);
+        unregisterReceiver(broadcastReceiver);
         super.onDestroy();
 
     }
@@ -156,7 +205,23 @@ public class AccelerometerService extends Service {
             currentAcceleration = SensorManager.GRAVITY_EARTH;
             lastAcceleration = SensorManager.GRAVITY_EARTH;
             sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-            sensorManager.registerListener(sensorEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
+            List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
+            for (int i=0; i <sensorList.size(); i++) {
+                Log.d(TAG, sensorList.get(i).getName());
+                int sensorType = sensorList.get(i).getType();
+                switch(sensorType) {
+                    case Sensor.TYPE_ACCELEROMETER:
+                    case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
+                        sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
+                        break;
+                    case Sensor.TYPE_MAGNETIC_FIELD:
+                    //case Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+                        sensorManager.registerListener(geoMagneticEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
+                        break;
+                }
+            }
+            //sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
+            //sensorManager.registerListener(getMagneticEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
             sensorRunning = true;
         }
     }
@@ -164,7 +229,8 @@ public class AccelerometerService extends Service {
     private void stopListening() {
         if (sensorRunning == true) {
             //logEntry("Stop listening to accelerometer", false);
-            sensorManager.unregisterListener(sensorEventListener);
+            sensorManager.unregisterListener(accelerometerEventListener);
+            sensorManager.unregisterListener(geoMagneticEventListener);
             sensorRunning = false;
         }
     }
@@ -177,6 +243,12 @@ public class AccelerometerService extends Service {
         Intent logIntent = new Intent(AlertService.BROADCAST_ACTION);
         logIntent.putExtra("message", message);
         sendBroadcast(logIntent);
+    }
+
+    private void sendResetBroadcast() {
+        broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
+        sendBroadcast(broadCastIntent);
+        reset = true;
     }
 
 
