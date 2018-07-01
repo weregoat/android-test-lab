@@ -35,7 +35,6 @@ import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -75,7 +74,8 @@ public class AlertService extends Service {
     Intent proximitySensorIntent;
     Intent geoMagneticSensorIntent;
     Intent resetIntent;
-    boolean accelerometerServiceStarted = false;
+    Intent alarmIntent;
+
     LocalDateTime wakeUpDateTime;
     LocalTime wakeUpTime;
     LocalTime sleepTime;
@@ -85,9 +85,6 @@ public class AlertService extends Service {
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
     Notification notification;
-
-    private final int alarmJobID = 8787;
-
 
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
@@ -102,10 +99,11 @@ public class AlertService extends Service {
                     alertCounts++;
                     if (alertCounts <= maxAlerts) {
                         delay = alertInterval;
-                        if (delay < AlarmJob.ALARM_DURATION) {
-                            delay = AlarmJob.ALARM_DURATION;
+                        if (delay < AlarmService.ALARM_DURATION) {
+                            delay = AlarmService.ALARM_DURATION;
                         }
-                        scheduleAlarmJob();
+                        stopService(alarmIntent);
+                        startService(alarmIntent);
                         expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
                     }
 
@@ -175,6 +173,7 @@ public class AlertService extends Service {
 
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
+        alarmIntent = new Intent(this, AlarmService.class);
         startServices();
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
@@ -195,6 +194,7 @@ public class AlertService extends Service {
         notification = mBuilder.build();
         startForeground(99, notification);
         logEntry(String.format("Interval: %d", interval/1000), false);
+        alarmIntent = new Intent(this, AlarmService.class);
 
     }
 
@@ -404,18 +404,6 @@ public class AlertService extends Service {
 
     }
 
-    private void scheduleAlarmJob() {
-        Log.d(TAG, "Alarm scheduled to run");
-        JobScheduler tm = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        tm.cancel(alarmJobID); // Cancel already running alarms
-        if (alertCounts <= maxAlerts) {
-            ComponentName serviceComponent = new ComponentName(this, AlarmJob.class);
-            JobInfo.Builder builder = new JobInfo.Builder(alarmJobID, serviceComponent);
-            builder.setOverrideDeadline(AlarmJob.ALARM_DURATION);
-            tm.schedule(builder.build());
-        }
-    }
-
     private void startServices() {
         stopServices();
         SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -457,6 +445,7 @@ public class AlertService extends Service {
     }
 
     private void stopServices() {
+        stopService(alarmIntent);
         Iterator iterator = runningServices.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
