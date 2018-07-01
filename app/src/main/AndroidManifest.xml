@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.SEND_SMS" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -36,10 +36,9 @@
             android:parentActivityName=".MainActivity" />
 
         <service
-            android:name=".AlarmJob"
+            android:name=".AlarmService"
             android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
+            android:exported="true" />
         <service
             android:name=".ProximityAlertService"
             android:enabled="true"
