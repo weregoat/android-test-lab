@@ -30,6 +30,7 @@ import org.joda.time.LocalDate;
 import org.joda.time.LocalDateTime;
 import org.joda.time.LocalTime;
 import org.joda.time.Period;
+import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
@@ -81,6 +82,7 @@ public class AlertService extends Service {
     LocalTime sleepTime;
     LocalDateTime sleepDateTime;
     HashMap runningServices = new HashMap<String, Intent>();
+    int servicesCount = 0;
 
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
@@ -91,7 +93,9 @@ public class AlertService extends Service {
         @Override
         public void run() {
             long delay = 0;
+            String notificationText;
             DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
+
 
             if (isSleepTime() == false) {
                 long millis = expirationTime - System.currentTimeMillis();
@@ -100,7 +104,7 @@ public class AlertService extends Service {
                     if (alertCounts <= maxAlerts) {
                         delay = alertInterval;
                         if (delay < AlarmService.ALARM_DURATION) {
-                            delay = AlarmService.ALARM_DURATION;
+                            delay += AlarmService.ALARM_DURATION;
                         }
                         stopService(alarmIntent);
                         startService(alarmIntent);
@@ -122,22 +126,27 @@ public class AlertService extends Service {
                     }
 
                 }
-                if (runningServices.isEmpty()) {
+                if (runningServices.size() < servicesCount) {
                     startServices();
                 }
                 if (delay > MAX_DELAY) {
                     delay = MAX_DELAY;
                 }
+                notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
 
             } else {
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
+                DateTime today = new DateTime(System.currentTimeMillis());
+                DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
+                if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
+                    formatter = DateTimeFormat.forPattern("EEEEE HH:mm").withLocale(getResources().getConfiguration().locale);
+                }
+                notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
                 stopServices();
             }
 
-
-            String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
             if (alertCounts > 0) {
                 notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
                 if (alertCounts > maxAlerts) {
@@ -268,7 +277,7 @@ public class AlertService extends Service {
     {
         this.startTimer();
         logEntry("Start alert service", false);
-        return START_NOT_STICKY;
+        return START_REDELIVER_INTENT;
     }
 
     @Override
@@ -438,6 +447,7 @@ public class AlertService extends Service {
                 ComponentName name = startService(intent);
                 if (name != null) {
                     Log.d(TAG, String.format("%s service started", serviceName));
+                    servicesCount++;
                 }
             }
         }

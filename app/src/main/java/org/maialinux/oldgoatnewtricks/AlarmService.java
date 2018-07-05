@@ -62,7 +62,7 @@ public class AlarmService extends Service {
                 ringtone.stop();
             }
         }, ALARM_DURATION);
-        return START_STICKY;
+        return START_STICKY_COMPATIBILITY;
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
