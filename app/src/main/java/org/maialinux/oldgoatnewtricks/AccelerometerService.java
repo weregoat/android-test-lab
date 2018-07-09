@@ -72,15 +72,9 @@ public class AccelerometerService extends Service {
                 delay = LISTENING_INTERVAL;
             }
             if (reset == true) {
+                delay = delay*2;
                 reset = false;
-                broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
-                sendBroadcast(broadCastIntent);
-                stopListening();
-                logEntry("Accelerometer Service sent reset message", false);
-                /* After a reset, sleep for a longer time */
-                SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-                delay = AlertService.getLong(sharedPreferences, "interval", String.valueOf(AlertService.INTERVAL), delay/1000, TAG)*(60000/10);
-                logEntry(String.format("Accelerometer service sleeping for %d seconds", delay/1000), false);
+                logEntry(String.format("Accelerometer service sleeping for %d seconds after reset", delay/1000), false);
             }
             accelHandler.postDelayed(this, delay);
         }
@@ -185,7 +179,7 @@ public class AccelerometerService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        return START_NOT_STICKY;
+        return START_STICKY;
     }
 
     @Override
@@ -248,7 +242,6 @@ public class AccelerometerService extends Service {
     private void sendResetBroadcast() {
         broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
         sendBroadcast(broadCastIntent);
-        reset = true;
     }
 
 
