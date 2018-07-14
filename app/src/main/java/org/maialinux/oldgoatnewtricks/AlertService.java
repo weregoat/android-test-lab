@@ -95,25 +95,27 @@ public class AlertService extends Service {
         @Override
         public void run() {
             long delay = MIN_DELAY;
-            String notificationText;
-            DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
-
-
             if (isSleepTime() == false) {
                 sleeping = false;
                 long millis = expirationTime - System.currentTimeMillis();
+                logEntry(String.format("%d seconds to alert", millis / 1000), false);
                 if (millis <= 0) {
                     alertCounts++;
                     if (alertCounts <= maxAlerts) {
+                        logEntry(String.format("Triggering alert %d", alertCounts), false);
                         delay = alertInterval;
                         if (delay < AlarmService.ALARM_DURATION) {
                             delay += AlarmService.ALARM_DURATION;
                         }
                         stopService(alarmIntent);
                         startService(alarmIntent);
-                        expirationTime = System.currentTimeMillis() + alertInterval; // Reset the expiration time
+                        resetTimer(alertInterval);
+                    } else {
+                        sendSMS(phoneNumber, "Test SMS");
+                        //timerHandler.removeCallbacks(timerRunnable);
+                        stopServices();
+                        stopSelf();
                     }
-
                 } else {
                     long minutes = millis / 60000;
                     long seconds = millis / 1000 - (minutes * 60); // Remainder
@@ -127,45 +129,25 @@ public class AlertService extends Service {
                     } else {
                         delay = alertInterval;
                     }
-
                 }
                 if (runningServices.size() < servicesCount) {
                     startServices();
                 }
-                if (delay > MAX_DELAY) {
-                    delay = MAX_DELAY;
-                }
-                notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
-
             } else {
+                sleeping = true;
                 delay = sleepDelay;
                 logEntry("Sleep time", false);
-                logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay/1000)), false);
-                DateTime today = new DateTime(System.currentTimeMillis());
-                DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
-                if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
-                    formatter = DateTimeFormat.forPattern("EEEEE HH:mm").withLocale(getResources().getConfiguration().locale);
-                }
-                notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
+                logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay / 1000)), false);
                 stopServices();
-                sleeping = true;
+                resetTimer(sleepInterval.toDurationMillis());
             }
 
-            if (alertCounts > 0) {
-                notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
-                if (alertCounts > maxAlerts) {
-                    sendSMS(phoneNumber, "Test SMS");
-                    timerHandler.removeCallbacks(timerRunnable);
-                    stopSelf();
-                }
-            }
-            logEntry(notificationText, true);
             if (delay < MIN_DELAY) {
                 delay = MIN_DELAY;
             } else if (delay > MAX_DELAY) {
                 delay = MAX_DELAY;
             }
-            logEntry(String.format("postDelay is %d seconds", Math.round(delay/1000)), false);
+            logEntry(String.format("postDelay is %d seconds", Math.round(delay / 1000)), false);
             timerHandler.postDelayed(this, delay);
 
         }
@@ -222,15 +204,6 @@ public class AlertService extends Service {
         return null;
     }
 
-
-    public void startTimer() {
-        alertCounts = 0;
-        reloadConfig();
-        expirationTime = System.currentTimeMillis() + interval;
-        timerHandler.removeCallbacks(timerRunnable);
-        timerRunnable.run();
-    }
-
     private void logEntry(String message, boolean updateNotification) {
         Log.d(TAG, message);
         broadCastIntent.putExtra("message", message);
@@ -279,8 +252,12 @@ public class AlertService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId)
     {
-        this.startTimer();
-        logEntry("Start alert service", false);
+        alertCounts = 0;
+        reloadConfig();
+        expirationTime = System.currentTimeMillis() + interval;
+        timerHandler.removeCallbacks(timerRunnable);
+        timerRunnable.run();
+        logEntry("Start alert service", true);
         return START_STICKY;
     }
 
@@ -300,16 +277,14 @@ public class AlertService extends Service {
            boolean resetMessage = intent.getBooleanExtra(RESET_MESSAGE, false);
            boolean endMessage = intent.getBooleanExtra(END_MESSAGE, false);
            if (resetMessage == true) {
-               expirationTime = System.currentTimeMillis() + interval;
-               logEntry(String.format("Interval: %d", interval/1000), false);
-               logEntry("Reset timer", false);
+                logEntry("Reset broadcast received; resetting timer", false);
                alertCounts = 0;
                reloadConfig();
-               timerHandler.removeCallbacks(timerRunnable);
-               timerRunnable.run();
+               resetTimer(interval);
+
            }
            if (endMessage == true) {
-               logEntry("Stop service", false);
+               logEntry("End broadcast received; stopping service", false);
                stopSelf();
            }
         }
@@ -474,8 +449,6 @@ public class AlertService extends Service {
     }
 
     private void calculateSleepInterval() {
-
-
         DateTime now = new DateTime();
         int days = Days.daysBetween(sleepDateTime.toInstant(), now.toInstant()).getDays();
         if (days > 0) {
@@ -490,9 +463,27 @@ public class AlertService extends Service {
                 wakeUpDateTime = wakeUpDateTime.plusDays(1);
         }
         sleepInterval = new Interval(sleepDateTime.toInstant(), wakeUpDateTime.toInstant());
-
-
     }
 
+    private void resetTimer(long interval) {
+        logEntry("Reset timer", false);
+        logEntry(String.format("Interval: %d", interval/1000), false);
+        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
+        expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
+        String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
+        if (alertCounts > 0) {
+            notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
+        } else if (sleeping == true) {
+            DateTime today = new DateTime(System.currentTimeMillis());
+            DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
+            if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
+                formatter = DateTimeFormat.forPattern("EEEEE HH:mm").withLocale(getResources().getConfiguration().locale);
+            }
+            notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
+        }
+        updateNotificationText(notificationText);
+        timerHandler.removeCallbacks(timerRunnable);
+        timerRunnable.run();
+    }
 
 }

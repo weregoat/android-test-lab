@@ -60,9 +60,10 @@ public class AlarmService extends Service {
             @Override
             public void run() {
                 ringtone.stop();
+                stopSelf();
             }
         }, ALARM_DURATION);
-        return START_REDELIVER_INTENT;
+        return START_STICKY;
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
