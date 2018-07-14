@@ -139,7 +139,7 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay / 1000)), false);
                 stopServices();
-                resetTimer(sleepInterval.toDurationMillis());
+                resetTimer(sleepDelay);
             }
 
             if (delay < MIN_DELAY) {
@@ -252,12 +252,12 @@ public class AlertService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId)
     {
+        logEntry("Start alert service", false);
         alertCounts = 0;
         reloadConfig();
-        expirationTime = System.currentTimeMillis() + interval;
+        resetTimer(interval);
         timerHandler.removeCallbacks(timerRunnable);
         timerRunnable.run();
-        logEntry("Start alert service", true);
         return START_STICKY;
     }
 
@@ -467,7 +467,7 @@ public class AlertService extends Service {
 
     private void resetTimer(long interval) {
         logEntry("Reset timer", false);
-        logEntry(String.format("Interval: %d", interval/1000), false);
+        logEntry(String.format("Interval: %d seconds", interval/1000), false);
         DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
         String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
@@ -481,9 +481,7 @@ public class AlertService extends Service {
             }
             notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
         }
-        updateNotificationText(notificationText);
-        timerHandler.removeCallbacks(timerRunnable);
-        timerRunnable.run();
+        logEntry(notificationText, true);
     }
 
 }
