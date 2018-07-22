@@ -120,7 +120,8 @@ public class AlertService extends Service {
                 } else {
                     long minutes = millis / 60000;
                     long seconds = millis / 1000 - (minutes * 60); // Remainder
-                    String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
+                    DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
+                    String message = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
                     logEntry(message, true);
                     if (alertCounts == 0) {
                         delay = Math.round(interval / 10);
@@ -485,5 +486,7 @@ public class AlertService extends Service {
         }
         logEntry(notificationText, true);
     }
+
+
 
 }
