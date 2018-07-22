@@ -57,6 +57,7 @@ public class AlertService extends Service {
     public static final long MAX_DELAY = 3600000;
     private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
     private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
+    public static final String INTERVAL_KEY = "interval";
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -120,7 +121,7 @@ public class AlertService extends Service {
                     long minutes = millis / 60000;
                     long seconds = millis / 1000 - (minutes * 60); // Remainder
                     String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
-                    logEntry(message, false);
+                    logEntry(message, true);
                     if (alertCounts == 0) {
                         delay = Math.round(interval / 10);
                         if (millis < delay) {
@@ -130,6 +131,7 @@ public class AlertService extends Service {
                         delay = alertInterval;
                     }
                 }
+                logEntry(String.format("Running services %d of %d", runningServices.size(), servicesCount), false);
                 if (runningServices.size() < servicesCount) {
                     startServices();
                 }
@@ -139,7 +141,7 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay / 1000)), false);
                 stopServices();
-                resetTimer(sleepDelay);
+                resetTimer(interval + sleepDelay);
             }
 
             if (delay < MIN_DELAY) {
@@ -279,7 +281,6 @@ public class AlertService extends Service {
            if (resetMessage == true) {
                 logEntry("Reset broadcast received; resetting timer", false);
                alertCounts = 0;
-               reloadConfig();
                resetTimer(interval);
 
            }
@@ -392,6 +393,7 @@ public class AlertService extends Service {
             Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
             String serviceName = entry.getKey();
             Intent intent = entry.getValue();
+            intent.putExtra(INTERVAL_KEY, interval);
             if (intent != null) {
                 ComponentName name = startService(intent);
                 if (name != null) {

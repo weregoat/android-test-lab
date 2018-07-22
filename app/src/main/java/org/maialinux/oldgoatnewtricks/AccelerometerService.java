@@ -58,6 +58,7 @@ public class AccelerometerService extends Service {
     SensorManager sensorManager;
     private boolean sensorRunning = false;
     private float[] lastGeoMagneticValues;
+    private long interval = AlertService.INTERVAL;
 
     Handler accelHandler = new Handler();
     Runnable accelRunnable = new Runnable() {
@@ -65,16 +66,22 @@ public class AccelerometerService extends Service {
         public void run() {
 
             long delay = SLEEP_INTERVAL;
-            if (sensorRunning == true) {
-                stopListening();
-            } else {
-                startListening();
-                delay = LISTENING_INTERVAL;
-            }
             if (reset == true) {
-                delay = delay*2;
+                delay = interval/2;
                 reset = false;
                 logEntry(String.format("Accelerometer service sleeping for %d seconds after reset", delay/1000), false);
+            } else {
+                if (sensorRunning == true) {
+                    stopListening();
+                } else {
+                    startListening();
+                    delay = LISTENING_INTERVAL;
+                }
+            }
+            if (delay > AlertService.MAX_DELAY) {
+                delay = AlertService.MAX_DELAY;
+            } else if (delay < AlertService.MIN_DELAY) {
+                delay = AlertService.MIN_DELAY;
             }
             accelHandler.postDelayed(this, delay);
         }
@@ -86,7 +93,11 @@ public class AccelerometerService extends Service {
         public void onReceive(Context context, Intent intent) {
             boolean resetMessage = intent.getBooleanExtra(AlertService.RESET_MESSAGE, false);
             if (resetMessage == true) {
+                Log.d(TAG, "Received reset broadcast");
+                reset = true;
                 stopListening();
+                accelHandler.removeCallbacks(accelRunnable);
+                accelRunnable.run();
             }
         }
     };
@@ -179,6 +190,9 @@ public class AccelerometerService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            interval = intent.getLongExtra(AlertService.INTERVAL_KEY, AlertService.INTERVAL);
+        }
         return START_STICKY;
     }
 
@@ -201,7 +215,7 @@ public class AccelerometerService extends Service {
             sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
             for (int i=0; i <sensorList.size(); i++) {
-                Log.d(TAG, sensorList.get(i).getName());
+                //Log.d(TAG, sensorList.get(i).getName());
                 int sensorType = sensorList.get(i).getType();
                 switch(sensorType) {
                     case Sensor.TYPE_ACCELEROMETER:
