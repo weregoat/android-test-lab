@@ -54,6 +54,7 @@ public class AlertService extends Service {
     public static final String RESET_MESSAGE = "reset";
     public static final String END_MESSAGE = "stop";
     public static final long MIN_DELAY = 30000;
+    private static final long DELAY = 5*60000; // five minutes
     public static final long MAX_DELAY = 3600000;
     private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
     private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
@@ -95,7 +96,7 @@ public class AlertService extends Service {
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            long delay = MIN_DELAY;
+            long delay = DELAY;
             if (isSleepTime() == false) {
                 sleeping = false;
                 long millis = expirationTime - System.currentTimeMillis();
@@ -104,7 +105,7 @@ public class AlertService extends Service {
                     alertCounts++;
                     if (alertCounts <= maxAlerts) {
                         logEntry(String.format("Triggering alert %d", alertCounts), false);
-                        delay = alertInterval;
+                        //delay = alertInterval;
                         if (delay < AlarmService.ALARM_DURATION) {
                             delay += AlarmService.ALARM_DURATION;
                         }
@@ -118,19 +119,10 @@ public class AlertService extends Service {
                         stopSelf();
                     }
                 } else {
-                    long minutes = millis / 60000;
-                    long seconds = millis / 1000 - (minutes * 60); // Remainder
-                    DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
-                    String message = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
-                    logEntry(message, true);
-                    if (alertCounts == 0) {
-                        delay = Math.round(interval / 10);
-                        if (millis < delay) {
-                            delay = millis;
-                        }
-                    } else {
-                        delay = alertInterval;
-                    }
+                    delay = Math.round(interval/10); //
+                }
+                if (delay > millis) {
+                    delay = millis;
                 }
                 logEntry(String.format("Running services %d of %d", runningServices.size(), servicesCount), false);
                 if (runningServices.size() < servicesCount) {
@@ -138,9 +130,8 @@ public class AlertService extends Service {
                 }
             } else {
                 sleeping = true;
-                delay = sleepDelay;
                 logEntry("Sleep time", false);
-                logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay / 1000)), false);
+                logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
                 resetTimer(interval + sleepDelay);
             }
@@ -151,6 +142,7 @@ public class AlertService extends Service {
                 delay = MAX_DELAY;
             }
             logEntry(String.format("postDelay is %d seconds", Math.round(delay / 1000)), false);
+            updateNotification();
             timerHandler.postDelayed(this, delay);
 
         }
@@ -283,6 +275,7 @@ public class AlertService extends Service {
                 logEntry("Reset broadcast received; resetting timer", false);
                alertCounts = 0;
                resetTimer(interval);
+               updateNotification();
 
            }
            if (endMessage == true) {
@@ -390,6 +383,7 @@ public class AlertService extends Service {
     private void startServices() {
         getServices();
         Iterator iterator = runningServices.entrySet().iterator();
+        servicesCount = 0;
         while (iterator.hasNext()) {
             Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
             String serviceName = entry.getKey();
@@ -409,6 +403,7 @@ public class AlertService extends Service {
     private void getServices() {
         SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
+
         for (int i = 0; i < sensorList.size(); i++) {
             Log.d(TAG, sensorList.get(i).getName());
             int sensorType = sensorList.get(i).getType();
@@ -449,6 +444,7 @@ public class AlertService extends Service {
             }
         }
         runningServices.clear();
+        servicesCount = 0;
     }
 
     private void calculateSleepInterval() {
@@ -471,8 +467,11 @@ public class AlertService extends Service {
     private void resetTimer(long interval) {
         logEntry("Reset timer", false);
         logEntry(String.format("Interval: %d seconds", interval/1000), false);
-        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
+    }
+
+    private void updateNotification() {
+        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
         if (alertCounts > 0) {
             notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
@@ -488,5 +487,5 @@ public class AlertService extends Service {
     }
 
 
-
 }
+
