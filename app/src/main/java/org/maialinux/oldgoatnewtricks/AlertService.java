@@ -18,6 +18,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
@@ -91,6 +92,9 @@ public class AlertService extends Service {
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
     Notification notification;
+
+    PowerManager powerManager;
+    PowerManager.WakeLock wakeLock;
 
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
@@ -188,7 +192,8 @@ public class AlertService extends Service {
         startForeground(99, notification);
         logEntry(String.format("Interval: %d", interval/1000), false);
         alarmIntent = new Intent(this, AlarmService.class);
-
+        powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
     }
 
 
@@ -224,6 +229,9 @@ public class AlertService extends Service {
             sleep = sleepInterval.containsNow();
         }
         if (sleep == true) {
+            if (wakeLock.isHeld()) {
+                wakeLock.release();
+            }
             Period sleepPeriod = new Period(new DateTime(), sleepInterval.getEnd());
             sleepDelay = sleepPeriod.toStandardDuration().getMillis();
             DateTimeFormatter format = ISODateTimeFormat.dateTimeNoMillis();
@@ -238,6 +246,9 @@ public class AlertService extends Service {
             expirationTime = System.currentTimeMillis() + sleepDelay + interval;
             logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
         } else {
+            if (wakeLock.isHeld() == false) {
+                wakeLock.acquire();
+            }
             sleepDelay = 0;
         }
         return sleep;
@@ -263,7 +274,11 @@ public class AlertService extends Service {
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
         notificationManager.cancel(0);
+        if (wakeLock.isHeld()) {
+            wakeLock.release();
+        }
         stopServices();
+
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -383,7 +398,6 @@ public class AlertService extends Service {
     private void startServices() {
         getServices();
         Iterator iterator = runningServices.entrySet().iterator();
-        servicesCount = 0;
         while (iterator.hasNext()) {
             Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
             String serviceName = entry.getKey();
@@ -403,7 +417,7 @@ public class AlertService extends Service {
     private void getServices() {
         SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
-
+        servicesCount = 0;
         for (int i = 0; i < sensorList.size(); i++) {
             Log.d(TAG, sensorList.get(i).getName());
             int sensorType = sensorList.get(i).getType();
