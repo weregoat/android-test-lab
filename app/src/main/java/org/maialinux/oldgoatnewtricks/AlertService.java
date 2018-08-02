@@ -55,7 +55,7 @@ public class AlertService extends Service {
     public static final String RESET_MESSAGE = "reset";
     public static final String END_MESSAGE = "stop";
     public static final long MIN_DELAY = 30000;
-    private static final long DELAY = 5*60000; // five minutes
+    private static final long DELAY = 10*60000; // default delay as ten minutes
     public static final long MAX_DELAY = 3600000;
     private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
     private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
@@ -123,13 +123,13 @@ public class AlertService extends Service {
                         stopSelf();
                     }
                 } else {
-                    delay = Math.round(interval/10); //
+                    delay = Math.round(interval/6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
                 }
                 if (delay > millis) {
                     delay = millis;
                 }
                 logEntry(String.format("Running services %d of %d", runningServices.size(), servicesCount), false);
-                if (runningServices.size() < servicesCount) {
+                if (runningServices.size() < servicesCount || servicesCount == 0) {
                     startServices();
                 }
             } else {
@@ -137,6 +137,7 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
+                delay = Math.round(sleepDelay/5)
                 resetTimer(interval + sleepDelay);
             }
 
