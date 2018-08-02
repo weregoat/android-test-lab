@@ -14,6 +14,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.util.Log;
@@ -25,6 +26,9 @@ public class AlarmService extends Service {
     private static String TAG = AlarmService.class.getSimpleName();
     private Ringtone ringtone;
     Handler mHandler = new Handler();
+
+
+
 
 
 

@@ -18,6 +18,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
@@ -54,6 +55,7 @@ public class AlertService extends Service {
     public static final String RESET_MESSAGE = "reset";
     public static final String END_MESSAGE = "stop";
     public static final long MIN_DELAY = 30000;
+    private static final long DELAY = 10*60000; // default delay as ten minutes
     public static final long MAX_DELAY = 3600000;
     private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
     private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
@@ -91,11 +93,14 @@ public class AlertService extends Service {
     NotificationCompat.Builder mBuilder;
     Notification notification;
 
+    PowerManager powerManager;
+    PowerManager.WakeLock wakeLock;
+
     Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            long delay = MIN_DELAY;
+            long delay = DELAY;
             if (isSleepTime() == false) {
                 sleeping = false;
                 long millis = expirationTime - System.currentTimeMillis();
@@ -104,7 +109,7 @@ public class AlertService extends Service {
                     alertCounts++;
                     if (alertCounts <= maxAlerts) {
                         logEntry(String.format("Triggering alert %d", alertCounts), false);
-                        delay = alertInterval;
+                        //delay = alertInterval;
                         if (delay < AlarmService.ALARM_DURATION) {
                             delay += AlarmService.ALARM_DURATION;
                         }
@@ -118,29 +123,21 @@ public class AlertService extends Service {
                         stopSelf();
                     }
                 } else {
-                    long minutes = millis / 60000;
-                    long seconds = millis / 1000 - (minutes * 60); // Remainder
-                    String message = String.format("Alert timer: %sm %ss remaining", minutes, seconds);
-                    logEntry(message, true);
-                    if (alertCounts == 0) {
-                        delay = Math.round(interval / 10);
-                        if (millis < delay) {
-                            delay = millis;
-                        }
-                    } else {
-                        delay = alertInterval;
-                    }
+                    delay = Math.round(interval/6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
+                }
+                if (delay > millis) {
+                    delay = millis;
                 }
                 logEntry(String.format("Running services %d of %d", runningServices.size(), servicesCount), false);
-                if (runningServices.size() < servicesCount) {
+                if (runningServices.size() < servicesCount || servicesCount == 0) {
                     startServices();
                 }
             } else {
                 sleeping = true;
-                delay = sleepDelay;
                 logEntry("Sleep time", false);
-                logEntry(String.format("Sleeping for %s seconds", String.valueOf(delay / 1000)), false);
+                logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
+                delay = Math.round(sleepDelay/5)
                 resetTimer(interval + sleepDelay);
             }
 
@@ -150,6 +147,7 @@ public class AlertService extends Service {
                 delay = MAX_DELAY;
             }
             logEntry(String.format("postDelay is %d seconds", Math.round(delay / 1000)), false);
+            updateNotification();
             timerHandler.postDelayed(this, delay);
 
         }
@@ -195,7 +193,8 @@ public class AlertService extends Service {
         startForeground(99, notification);
         logEntry(String.format("Interval: %d", interval/1000), false);
         alarmIntent = new Intent(this, AlarmService.class);
-
+        powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
     }
 
 
@@ -231,6 +230,9 @@ public class AlertService extends Service {
             sleep = sleepInterval.containsNow();
         }
         if (sleep == true) {
+            if (wakeLock.isHeld()) {
+                wakeLock.release();
+            }
             Period sleepPeriod = new Period(new DateTime(), sleepInterval.getEnd());
             sleepDelay = sleepPeriod.toStandardDuration().getMillis();
             DateTimeFormatter format = ISODateTimeFormat.dateTimeNoMillis();
@@ -245,6 +247,9 @@ public class AlertService extends Service {
             expirationTime = System.currentTimeMillis() + sleepDelay + interval;
             logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
         } else {
+            if (wakeLock.isHeld() == false) {
+                wakeLock.acquire();
+            }
             sleepDelay = 0;
         }
         return sleep;
@@ -270,7 +275,11 @@ public class AlertService extends Service {
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
         notificationManager.cancel(0);
+        if (wakeLock.isHeld()) {
+            wakeLock.release();
+        }
         stopServices();
+
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -282,6 +291,7 @@ public class AlertService extends Service {
                 logEntry("Reset broadcast received; resetting timer", false);
                alertCounts = 0;
                resetTimer(interval);
+               updateNotification();
 
            }
            if (endMessage == true) {
@@ -408,6 +418,7 @@ public class AlertService extends Service {
     private void getServices() {
         SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
+        servicesCount = 0;
         for (int i = 0; i < sensorList.size(); i++) {
             Log.d(TAG, sensorList.get(i).getName());
             int sensorType = sensorList.get(i).getType();
@@ -448,6 +459,7 @@ public class AlertService extends Service {
             }
         }
         runningServices.clear();
+        servicesCount = 0;
     }
 
     private void calculateSleepInterval() {
@@ -470,8 +482,11 @@ public class AlertService extends Service {
     private void resetTimer(long interval) {
         logEntry("Reset timer", false);
         logEntry(String.format("Interval: %d seconds", interval/1000), false);
-        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
+    }
+
+    private void updateNotification() {
+        DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
         if (alertCounts > 0) {
             notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
@@ -486,4 +501,6 @@ public class AlertService extends Service {
         logEntry(notificationText, true);
     }
 
+
 }
+
