@@ -137,7 +137,7 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
-                delay = Math.round(sleepDelay/5)
+                delay = Math.round(sleepDelay/5);
                 resetTimer(interval + sleepDelay);
             }
 
