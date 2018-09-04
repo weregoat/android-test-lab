@@ -60,6 +60,8 @@ public class AlertService extends Service {
     private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
     private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
     public static final String INTERVAL_KEY = "interval";
+    public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
+    public static final int MAX_SMS = 3;
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -74,6 +76,8 @@ public class AlertService extends Service {
     String phoneNumber;
     boolean sleeping; // If the service is in a sleeping period
     Interval sleepInterval;
+    String message = DEFAULT_MESSAGE;
+    int smsSent = 0;
 
     Intent broadCastIntent;
     Intent accelerometerSensorIntent;
@@ -117,10 +121,17 @@ public class AlertService extends Service {
                         startService(alarmIntent);
                         resetTimer(alertInterval);
                     } else {
-                        sendSMS(phoneNumber, "Test SMS");
+                        sendSMS(phoneNumber, message);
                         //timerHandler.removeCallbacks(timerRunnable);
-                        stopServices();
-                        stopSelf();
+                        if (smsSent >= MAX_SMS) {
+                            stopServices();
+                            stopSelf();
+                        } else {
+                            alertCounts = 0;
+                            stopService(alarmIntent);
+                            startService(alarmIntent);
+                            resetTimer(alertInterval);
+                        }
                     }
                 } else {
                     delay = Math.round(interval/6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
@@ -290,6 +301,7 @@ public class AlertService extends Service {
            if (resetMessage == true) {
                 logEntry("Reset broadcast received; resetting timer", false);
                alertCounts = 0;
+               smsSent = 0;
                resetTimer(interval);
                updateNotification();
 
@@ -320,6 +332,7 @@ public class AlertService extends Service {
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
         maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
         phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
+        message = getString(sharedPreferences, "text_message", DEFAULT_MESSAGE, TAG);
         alertInterval = Math.round(interval/maxAlerts);
         DateTime now = new DateTime();
         sleepDateTime = new DateTime()
@@ -392,6 +405,7 @@ public class AlertService extends Service {
             SmsManager sms = SmsManager.getDefault();
             sms.sendTextMessage(phoneNumber, null, message, null, null);
             logEntry("SMS sent", true);
+            smsSent++;
         }
 
     }

@@ -24,4 +24,7 @@
     <EditTextPreference
         android:key="max_warnings"
         android:title="Max warnings before SMS alert"/>
+    <EditTextPreference
+        android:key="text_message"
+        android:title="SMS message" />
 </PreferenceScreen>
