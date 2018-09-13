@@ -238,7 +238,12 @@ public class AlertService extends Service {
                 false
         );
         if (alertCounts == 0) { /* Never go to sleep if there are alerts */
-            sleep = sleepInterval.containsNow();
+            DateTime alertDateTime = new DateTime(expirationTime);
+            if (alertDateTime.isAfter(sleepDateTime)) {
+                sleep = true;
+            } else {
+                sleep = sleepInterval.containsNow();
+            }
         }
         if (sleep == true) {
             if (wakeLock.isHeld()) {
