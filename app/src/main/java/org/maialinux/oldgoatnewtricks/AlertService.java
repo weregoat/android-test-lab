@@ -3,6 +3,7 @@ package org.maialinux.oldgoatnewtricks;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.TaskStackBuilder;
 import android.app.job.JobInfo;
 import android.app.job.JobScheduler;
 import android.content.BroadcastReceiver;
@@ -189,16 +190,21 @@ public class AlertService extends Service {
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
         resetIntent.putExtra(AlertService.RESET_MESSAGE, true);
         Intent stopIntent = new Intent(AlertService.BROADCAST_ACTION);
+        Intent mainAppIntent = new Intent(this, MainActivity.class);
+        TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
+        stackBuilder.addNextIntentWithParentStack(mainAppIntent);
         stopIntent.putExtra(AlertService.END_MESSAGE, true);
         PendingIntent resetPendingIntent = PendingIntent.getBroadcast(getApplicationContext(), 0, resetIntent, 0);
         PendingIntent stopPendingIntent = PendingIntent.getBroadcast(getApplicationContext(), 1, stopIntent, 0);
+        PendingIntent mainPendingIntent = stackBuilder.getPendingIntent(2, PendingIntent.FLAG_UPDATE_CURRENT);
         mBuilder = new NotificationCompat.Builder(this, "Something")
                 .setContentText("")
                 .setContentTitle("Dead-man notification")
                 .setAutoCancel(true)
                 .setSmallIcon(R.drawable.ic_stat_notification)
                 .addAction(R.drawable.ic_stat_reset, "Reset", resetPendingIntent)
-                .addAction(R.drawable.ic_stat_stop, "Stop", stopPendingIntent);
+                .addAction(R.drawable.ic_stat_stop, "Stop", stopPendingIntent)
+                .addAction(R.drawable.ic_launch_main, "Main", mainPendingIntent);
         notificationManager = NotificationManagerCompat.from(this);
         notification = mBuilder.build();
         startForeground(99, notification);
@@ -238,12 +244,7 @@ public class AlertService extends Service {
                 false
         );
         if (alertCounts == 0) { /* Never go to sleep if there are alerts */
-            DateTime alertDateTime = new DateTime(expirationTime);
-            if (alertDateTime.isAfter(sleepDateTime)) {
-                sleep = true;
-            } else {
                 sleep = sleepInterval.containsNow();
-            }
         }
         if (sleep == true) {
             if (wakeLock.isHeld()) {
@@ -495,7 +496,14 @@ public class AlertService extends Service {
         if (wakeUpDateTime.isBefore(sleepDateTime)) {
                 wakeUpDateTime = wakeUpDateTime.plusDays(1);
         }
-        sleepInterval = new Interval(sleepDateTime.toInstant(), wakeUpDateTime.toInstant());
+
+        /* If the alert time is going to expire during sleep time, go to sleep now */
+        DateTime alertDateTime = new DateTime(expirationTime);
+        if (alertDateTime.isAfter(sleepDateTime) && alertDateTime.isBefore(wakeUpDateTime)) {
+            sleepInterval = new Interval(now.toInstant(), wakeUpDateTime.toInstant());
+        } else {
+            sleepInterval = new Interval(sleepDateTime.toInstant(), wakeUpDateTime.toInstant());
+        }
     }
 
     private void resetTimer(long interval) {
