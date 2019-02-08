@@ -138,7 +138,7 @@ public class AlertService extends Service {
                         }
                     }
                 } else {
-                    delay = Math.round(interval/60); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
+                    delay = Math.round(interval/6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
                 }
                 if (delay > millis) {
                     delay = millis;
