@@ -43,6 +43,7 @@ import org.joda.time.format.PeriodFormatterBuilder;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class AlertService extends Service {
@@ -77,7 +78,7 @@ public class AlertService extends Service {
     long alertInterval;
     int maxAlerts = MAX_ALERTS;
     String phoneNumber;
-    boolean sleeping; // If the service is in a sleeping period
+    //boolean sleeping; // If the service is in a sleeping period
     Interval sleepInterval;
     String message = DEFAULT_MESSAGE;
     int smsSent = 0;
@@ -93,7 +94,7 @@ public class AlertService extends Service {
     LocalTime wakeUpTime;
     LocalTime sleepTime;
     DateTime sleepDateTime;
-    HashMap runningServices = new HashMap<String, Intent>();
+    HashMap<String, Intent> runningServices = new HashMap<>();
     int servicesCount = 0;
 
     NotificationManagerCompat notificationManager;
@@ -107,10 +108,9 @@ public class AlertService extends Service {
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            long delay = DELAY;
-            /* If it's sleep time */
+            long delay = DELAY; // Default delay to start
+            /* If it's not sleep time */
             if (isSleepTime() == false) {
-                sleeping = false;
                 long millis = expirationTime - System.currentTimeMillis();
                 logEntry(String.format("%d seconds to alert", millis / 1000), false);
                 if (millis <= 0) {
@@ -138,7 +138,7 @@ public class AlertService extends Service {
                         }
                     }
                 } else {
-                    delay = Math.round(interval/6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
+                    delay = Math.round(interval/60); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
                 }
                 if (delay > millis) {
                     delay = millis;
@@ -148,7 +148,6 @@ public class AlertService extends Service {
                     startServices();
                 }
             } else {
-                sleeping = true;
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
@@ -187,7 +186,6 @@ public class AlertService extends Service {
         broadCastIntent = new Intent(BROADCAST_ACTION);
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
         alarmIntent = new Intent(this, AlarmService.class);
-        startServices();
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime.toLocalDateTime()), formatter.print(wakeUpDateTime.toLocalDateTime())), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
@@ -215,6 +213,7 @@ public class AlertService extends Service {
         alarmIntent = new Intent(this, AlarmService.class);
         powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+        startServices();
     }
 
 
@@ -272,24 +271,21 @@ public class AlertService extends Service {
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
             Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
             int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-            /* We aquire the wakelock only if the phone is charging (e.g. plugged in) */
-            if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
+            /* We acquire the wakelock only if the phone is charging (e.g. plugged in) */
+            if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
                 if (wakeLock.isHeld() == false) {
                     wakeLock.acquire();
                     logEntry("Acquiring wake-lock", true);
                 }
             } else {
-                /* Android sleeping was too random in its results, taking it away for the moment */
-                //if (wakeLock.isHeld()) {
-                //    wakeLock.release();
-                //    logEntry("Releasing wake-lock as phone is not plugged-in", true);
-                //}
-
+               if (wakeLock.isHeld()) {
+                    wakeLock.release();
+                    logEntry("Releasing wake-lock as phone is not plugged-in", true);
+               }
             }
             sleepDelay = 0;
         }
 
-        sleeping = sleep;
         return sleep;
 
     }
@@ -439,17 +435,19 @@ public class AlertService extends Service {
 
     private void startServices() {
         getServices();
-        Iterator iterator = runningServices.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
-            String serviceName = entry.getKey();
-            Intent intent = entry.getValue();
-            intent.putExtra(INTERVAL_KEY, interval);
-            if (intent != null) {
-                ComponentName name = startService(intent);
-                if (name != null) {
-                    Log.d(TAG, String.format("%s service started", serviceName));
-                    servicesCount++;
+        if (isSleepTime() == false) {
+            Iterator<Map.Entry<String, Intent>> iterator = runningServices.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Intent> entry = iterator.next();
+                String serviceName = entry.getKey();
+                Intent intent = entry.getValue();
+                intent.putExtra(INTERVAL_KEY, interval);
+                if (intent != null) {
+                    ComponentName name = startService(intent);
+                    if (name != null) {
+                        Log.d(TAG, String.format("%s service started", serviceName));
+                        servicesCount++;
+                    }
                 }
             }
         }
@@ -486,9 +484,9 @@ public class AlertService extends Service {
     private void stopServices() {
         stopService(alarmIntent);
         getServices();
-        Iterator iterator = runningServices.entrySet().iterator();
+        Iterator<Map.Entry<String,Intent>> iterator = runningServices.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<String, Intent> entry = (Map.Entry) iterator.next();
+            Map.Entry<String, Intent> entry = iterator.next();
             String serviceName = entry.getKey();
             Intent intent = entry.getValue();
             if (intent != null) {
@@ -541,13 +539,15 @@ public class AlertService extends Service {
         String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
         if (alertCounts > 0) {
             notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
-        } else if (sleeping == true) {
-            DateTime today = new DateTime(System.currentTimeMillis());
-            DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
-            if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
-                formatter = DateTimeFormat.forPattern("EEEEE HH:mm").withLocale(getResources().getConfiguration().locale);
+        } else {
+            if (isSleepTime() == true) {
+                DateTime today = new DateTime(System.currentTimeMillis());
+                DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
+                if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
+                    formatter = DateTimeFormat.forPattern("EEEEE HH:mm").withLocale(Locale.getDefault());
+                }
+                notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
             }
-            notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
         }
         logEntry(notificationText, true);
     }
