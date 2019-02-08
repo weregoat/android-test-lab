@@ -37,7 +37,7 @@ public class AccelerometerService extends Service {
      */
     private static final long SLEEP_INTERVAL = 1*60*1000; //  1 minute between checks
     private static final long LISTENING_INTERVAL = 30*1000; // Listen for 30 seconds
-    private static final double ACCELERATION_THRESHOLD = 0.5f; // This much acceleration to trigger movement
+    private static final double ACCELERATION_THRESHOLD = 0.9f; // This much acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
 
     /*

@@ -17,6 +17,7 @@ import android.hardware.SensorManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -30,6 +31,7 @@ import android.util.Log;
 import org.joda.time.DateTime;
 import org.joda.time.Days;
 import org.joda.time.Interval;
+import org.joda.time.LocalDateTime;
 import org.joda.time.LocalTime;
 import org.joda.time.Period;
 import org.joda.time.format.DateTimeFormat;
@@ -66,7 +68,7 @@ public class AlertService extends Service {
 
 
     //private final IBinder mBinder = new LocalBinder();
-    private final String TAG = "AlertService";
+    private final String TAG = "OGNT:AlertService";
     Ringtone ringtone;
     long expirationTime;
     int alertCounts = 0;
@@ -106,6 +108,7 @@ public class AlertService extends Service {
         @Override
         public void run() {
             long delay = DELAY;
+            /* If it's sleep time */
             if (isSleepTime() == false) {
                 sleeping = false;
                 long millis = expirationTime - System.currentTimeMillis();
@@ -149,7 +152,7 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
-                delay = Math.round(sleepDelay/5);
+                delay = Math.round(interval/6);
                 resetTimer(interval + sleepDelay);
             }
 
@@ -186,7 +189,7 @@ public class AlertService extends Service {
         alarmIntent = new Intent(this, AlarmService.class);
         startServices();
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
-        logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime), formatter.print(wakeUpDateTime)), false);
+        logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime.toLocalDateTime()), formatter.print(wakeUpDateTime.toLocalDateTime())), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
         resetIntent.putExtra(AlertService.RESET_MESSAGE, true);
         Intent stopIntent = new Intent(AlertService.BROADCAST_ACTION);
@@ -238,13 +241,14 @@ public class AlertService extends Service {
         logEntry(
                 String.format(
                         "Sleep interval from %s to %s",
-                        intervalFormat.print(sleepDateTime.toLocalDateTime()),
-                        intervalFormat.print(wakeUpDateTime.toLocalDateTime())
+                        intervalFormat.print(sleepInterval.getStart().toLocalDateTime()),
+                        intervalFormat.print(sleepInterval.getEnd().toLocalDateTime())
                 ),
-                false
+                true
+
         );
         if (alertCounts == 0) { /* Never go to sleep if there are alerts */
-                sleep = sleepInterval.containsNow();
+            sleep = sleepInterval.containsNow();
         }
         if (sleep == true) {
             if (wakeLock.isHeld()) {
@@ -253,8 +257,8 @@ public class AlertService extends Service {
             Period sleepPeriod = new Period(new DateTime(), sleepInterval.getEnd());
             sleepDelay = sleepPeriod.toStandardDuration().getMillis();
             DateTimeFormatter format = ISODateTimeFormat.dateTimeNoMillis();
-            logEntry(String.format("Sleep time %s", format.print(sleepDateTime.toLocalDateTime())), false);
-            logEntry(String.format("Wakeup time %s", format.print(wakeUpDateTime.toLocalDateTime())), false);
+            logEntry(String.format("Sleep time %s", format.print(sleepInterval.getStart().toLocalDateTime())), false);
+            logEntry(String.format("Wakeup time %s", format.print(sleepInterval.getEnd().toLocalDateTime())), false);
             PeriodFormatter formatter = new PeriodFormatterBuilder()
                     .appendHours()
                     .appendSuffix("h")
@@ -264,11 +268,28 @@ public class AlertService extends Service {
             expirationTime = System.currentTimeMillis() + sleepDelay + interval;
             logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
         } else {
-            if (wakeLock.isHeld() == false) {
-                wakeLock.acquire();
+            // https://developer.android.com/training/monitoring-device-state/battery-monitoring#java
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
+            int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+            /* We aquire the wakelock only if the phone is charging (e.g. plugged in) */
+            if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
+                if (wakeLock.isHeld() == false) {
+                    wakeLock.acquire();
+                    logEntry("Acquiring wake-lock", true);
+                }
+            } else {
+                /* Android sleeping was too random in its results, taking it away for the moment */
+                //if (wakeLock.isHeld()) {
+                //    wakeLock.release();
+                //    logEntry("Releasing wake-lock as phone is not plugged-in", true);
+                //}
+
             }
             sleepDelay = 0;
         }
+
+        sleeping = sleep;
         return sleep;
 
     }
@@ -500,15 +521,18 @@ public class AlertService extends Service {
         /* If the alert time is going to expire during sleep time, go to sleep now */
         DateTime alertDateTime = new DateTime(expirationTime);
         if (alertDateTime.isAfter(sleepDateTime) && alertDateTime.isBefore(wakeUpDateTime)) {
-            sleepInterval = new Interval(now.toInstant(), wakeUpDateTime.toInstant());
+            sleepInterval = new Interval(now.toDateTime(), wakeUpDateTime.toDateTime());
         } else {
-            sleepInterval = new Interval(sleepDateTime.toInstant(), wakeUpDateTime.toInstant());
+            sleepInterval = new Interval(sleepDateTime.toDateTime(), wakeUpDateTime.toDateTime());
         }
     }
 
     private void resetTimer(long interval) {
         logEntry("Reset timer", false);
         logEntry(String.format("Interval: %d seconds", interval/1000), false);
+        if (isSleepTime() == true) {
+            interval = sleepInterval.toDurationMillis();
+        }
         expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
     }
 
