@@ -1,6 +1,8 @@
 package org.maialinux.oldgoatnewtricks;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.app.TaskStackBuilder;
@@ -18,6 +20,7 @@ import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -66,6 +69,7 @@ public class AlertService extends Service {
     public static final String INTERVAL_KEY = "interval";
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
+    public static final String CHANNEL_ID = "GOATCHANNEL";
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -198,7 +202,7 @@ public class AlertService extends Service {
         PendingIntent resetPendingIntent = PendingIntent.getBroadcast(getApplicationContext(), 0, resetIntent, 0);
         PendingIntent stopPendingIntent = PendingIntent.getBroadcast(getApplicationContext(), 1, stopIntent, 0);
         PendingIntent mainPendingIntent = stackBuilder.getPendingIntent(2, PendingIntent.FLAG_UPDATE_CURRENT);
-        mBuilder = new NotificationCompat.Builder(this, "Something")
+        mBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentText("")
                 .setContentTitle("Dead-man notification")
                 .setAutoCancel(true)
@@ -434,6 +438,7 @@ public class AlertService extends Service {
     }
 
     private void startServices() {
+        createNotificationChannel();
         getServices();
         if (isSleepTime() == false) {
             Iterator<Map.Entry<String, Intent>> iterator = runningServices.entrySet().iterator();
@@ -498,6 +503,10 @@ public class AlertService extends Service {
             }
         }
         runningServices.clear();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            notificationManager.deleteNotificationChannel(CHANNEL_ID);
+        }
         servicesCount = 0;
     }
 
@@ -550,6 +559,27 @@ public class AlertService extends Service {
             }
         }
         logEntry(notificationText, true);
+    }
+
+    private void createNotificationChannel() {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.channel_name);
+            String description = getString(R.string.channel_description);
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            channel.setSound(null, null);
+            channel.enableLights(false);
+            channel.enableVibration(false);
+            channel.setImportance(NotificationManager.IMPORTANCE_LOW);
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+
+        }
     }
 
 

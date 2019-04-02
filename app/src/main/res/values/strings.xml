@@ -3,4 +3,6 @@
     <string name="reset_button">Reset Timer</string>
     <string name="stop_button">Stop Service</string>
     <string name="settings_button">Settings</string>
+    <string name="channel_name">OldGoat</string>
+    <string name="channel_description">Notification channel for goats</string>
 </resources>
