@@ -29,6 +29,7 @@ import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.telephony.SmsManager;
 import android.util.Log;
+import android.view.OrientationEventListener;
 
 
 import org.joda.time.DateTime;
@@ -65,11 +66,13 @@ public class AlertService extends Service {
     private static final long DELAY = 10*60000; // default delay as ten minutes
     public static final long MAX_DELAY = 3600000;
     private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
-    private static final String ACCELEROMETER_SENSOR_KEY = "accelerometer sensor";
+    private static final String MOVEMENT_SENSOR_KEY = "movement sensor";
+    private static final String ORIENTATION_KEY = "orientation alert";
     public static final String INTERVAL_KEY = "interval";
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
+    private OrientationEventListener orientationEventListener;
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -217,6 +220,23 @@ public class AlertService extends Service {
         alarmIntent = new Intent(this, AlarmService.class);
         powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+        orientationEventListener = new OrientationEventListener(getApplicationContext(), SensorManager.SENSOR_DELAY_NORMAL) {
+            @Override
+            public void onOrientationChanged(int i) {
+                if (i >= 0 ) {
+                    Log.d(TAG, String.format("Orientation changed to %d", i));
+                    resetTimer(alertInterval);
+                }
+            }
+        };
+
+        if (orientationEventListener.canDetectOrientation() == true) {
+            Log.v(TAG, "Enabling orientation detection");
+            orientationEventListener.enable();
+        } else {
+            Log.w(TAG, "Cannot detect orientation; disabling");
+            orientationEventListener.disable();
+        }
         startServices();
     }
 
@@ -316,6 +336,7 @@ public class AlertService extends Service {
         if (wakeLock.isHeld()) {
             wakeLock.release();
         }
+        orientationEventListener.disable();
         stopServices();
 
     }
@@ -470,9 +491,11 @@ public class AlertService extends Service {
                 case Sensor.TYPE_ACCELEROMETER:
                 case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
                 case Sensor.TYPE_MAGNETIC_FIELD:
-                    if (runningServices.containsKey(ACCELEROMETER_SENSOR_KEY) == false) {
-                        accelerometerSensorIntent = new Intent(this, AccelerometerService.class);
-                        runningServices.put(ACCELEROMETER_SENSOR_KEY, accelerometerSensorIntent);
+                case Sensor.TYPE_GYROSCOPE:
+                case Sensor.TYPE_GYROSCOPE_UNCALIBRATED:
+                    if (runningServices.containsKey(MOVEMENT_SENSOR_KEY) == false) {
+                        accelerometerSensorIntent = new Intent(this, MovementService.class);
+                        runningServices.put(MOVEMENT_SENSOR_KEY, accelerometerSensorIntent);
                     }
                     break;
                 case Sensor.TYPE_PROXIMITY:
@@ -483,6 +506,9 @@ public class AlertService extends Service {
                     break;
 
             }
+        }
+        if (runningServices.containsKey(ORIENTATION_KEY) == false) {
+
         }
     }
 

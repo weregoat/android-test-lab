@@ -27,7 +27,7 @@ import org.joda.time.format.ISODateTimeFormat;
 import java.util.List;
 
 
-public class AccelerometerService extends Service {
+public class MovementService extends Service {
 
 
     /* Listen intermittently to the sensor for a few seconds only to minimize battery usage */
@@ -38,6 +38,7 @@ public class AccelerometerService extends Service {
     private static final long SLEEP_INTERVAL = 1*60*1000; //  1 minute between checks
     private static final long LISTENING_INTERVAL = 30*1000; // Listen for 30 seconds
     private static final double ACCELERATION_THRESHOLD = 0.9f; // This much acceleration to trigger movement
+    private static final double ROTATION_THRESHOLD = 0.5f; // This much rotational acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
 
     /*
@@ -49,7 +50,7 @@ public class AccelerometerService extends Service {
     private static final float ALPHA = 0.8f; // Threshold for low-pass filter
 
 
-    private static final String TAG = "AccelerometerService";
+    private static final String TAG = "MovementService";
     private float acceleration = 0.0f;
     private float currentAcceleration;
     private float lastAcceleration;
@@ -69,9 +70,9 @@ public class AccelerometerService extends Service {
             if (reset == true) {
                 delay = interval/2;
                 reset = false;
-                logEntry(String.format("Accelerometer service sleeping for %d seconds after reset", delay/1000), false);
+                logEntry(String.format("Sensor service sleeping for %d seconds after reset", delay/1000), false);
             } else {
-                if (sensorRunning == true) {
+            if (sensorRunning == true) {
                     stopListening();
                 } else {
                     startListening();
@@ -97,7 +98,7 @@ public class AccelerometerService extends Service {
         }
     };
 
-    public AccelerometerService() {
+    public MovementService() {
 
     }
 
@@ -105,7 +106,7 @@ public class AccelerometerService extends Service {
     public void onCreate() {
         registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
         broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
-        logEntry("Create accelerometer service", false);
+        logEntry("Create movement detection service", false);
         accelRunnable.run();
     }
 
@@ -181,6 +182,30 @@ public class AccelerometerService extends Service {
         }
     };
 
+    private final SensorEventListener gyroscopeEventListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            if (reset == false) {
+                float x = event.values[0];
+                float y = event.values[1];
+                float z = event.values[2];
+                float omegaMagnitude = (float) Math.sqrt((double) (x*x + y*y + z*z));
+                Log.d(TAG, String.format("axis rotation acceleration: %f", omegaMagnitude));
+                if (omegaMagnitude >= ROTATION_THRESHOLD) {
+                    logEntry("Gyroscope sensor triggered", true);
+                    reset = true;
+                    sendResetBroadcast();
+                }
+
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int i) {
+
+        }
+    };
+
 
 
     @Override
@@ -203,7 +228,7 @@ public class AccelerometerService extends Service {
 
     private void startListening() {
         if (sensorRunning == false) {
-            //logEntry("Start listening to accelerometer", false);
+            logEntry("Start listening to sensors", false);
             acceleration = 0.0f;
             currentAcceleration = SensorManager.GRAVITY_EARTH;
             lastAcceleration = SensorManager.GRAVITY_EARTH;
@@ -216,24 +241,32 @@ public class AccelerometerService extends Service {
                     case Sensor.TYPE_ACCELEROMETER:
                     case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
                         sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
+                        sensorRunning = true;
                         break;
                     case Sensor.TYPE_MAGNETIC_FIELD:
                     //case Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED:
                         sensorManager.registerListener(geoMagneticEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
+                        sensorRunning = true;
+                        break;
+                    case Sensor.TYPE_GYROSCOPE:
+                    case Sensor.TYPE_GYROSCOPE_UNCALIBRATED:
+                        sensorManager.registerListener(gyroscopeEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL);
+                        sensorRunning = true;
                         break;
                 }
             }
             //sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
             //sensorManager.registerListener(getMagneticEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
-            sensorRunning = true;
+            //sensorRunning = true;
         }
     }
 
     private void stopListening() {
         if (sensorRunning == true) {
-            //logEntry("Stop listening to accelerometer", false);
+            logEntry("Stop listening to sensors", false);
             sensorManager.unregisterListener(accelerometerEventListener);
             sensorManager.unregisterListener(geoMagneticEventListener);
+            sensorManager.unregisterListener(gyroscopeEventListener);
             sensorRunning = false;
         }
     }
@@ -252,6 +285,8 @@ public class AccelerometerService extends Service {
         broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
         sendBroadcast(broadCastIntent);
     }
+
+
 
 
 }
