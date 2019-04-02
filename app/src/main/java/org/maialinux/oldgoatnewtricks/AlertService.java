@@ -73,6 +73,7 @@ public class AlertService extends Service {
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
     private OrientationEventListener orientationEventListener;
+    public static final int ORIENTATION_THRESHOLD = 10; // In degrees
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -89,6 +90,7 @@ public class AlertService extends Service {
     Interval sleepInterval;
     String message = DEFAULT_MESSAGE;
     int smsSent = 0;
+    int orientation = -1;
 
     Intent broadCastIntent;
     Intent accelerometerSensorIntent;
@@ -223,9 +225,22 @@ public class AlertService extends Service {
         orientationEventListener = new OrientationEventListener(getApplicationContext(), SensorManager.SENSOR_DELAY_NORMAL) {
             @Override
             public void onOrientationChanged(int i) {
-                if (i >= 0 ) {
-                    Log.d(TAG, String.format("Orientation changed to %d", i));
-                    resetTimer(alertInterval);
+                if (i != orientation) {
+                    // Values go from -1 to 360
+                    // -1 means it doesn't know
+                    if (i >= 0 && orientation >= 0) { 
+                        // Converts the values into radians and then calculate the SIN value
+                        // so to have contiguous values without the gap from 0 to 360.
+                        double previous = Math.sin(Math.toRadians(orientation));
+                        double current = Math.sin(Math.toRadians(i));
+                        double delta = Math.abs(previous - current);
+                        // Converts back the delta to degrees so we can compare with the THRESHOLD
+                        if (Math.toDegrees(Math.asin(delta)) > ORIENTATION_THRESHOLD) {
+                            logEntry("Reset from orientation change", false);
+                            resetTimer(alertInterval);
+                        }
+                    }
+                    orientation = i;
                 }
             }
         };
@@ -587,6 +602,8 @@ public class AlertService extends Service {
         logEntry(notificationText, true);
     }
 
+    // This piece of code is now required if you want it to run on Oreo.
+    // https://developer.android.com/training/notify-user/build-notification.html#Priority
     private void createNotificationChannel() {
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
