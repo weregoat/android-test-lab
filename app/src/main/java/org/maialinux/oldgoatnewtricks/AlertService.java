@@ -225,20 +225,30 @@ public class AlertService extends Service {
         orientationEventListener = new OrientationEventListener(getApplicationContext(), SensorManager.SENSOR_DELAY_NORMAL) {
             @Override
             public void onOrientationChanged(int i) {
+                boolean reset = false;
+                // Values go from -1 to 360
+                // -1 means it doesn't know
                 if (i != orientation) {
-                    // Values go from -1 to 360
-                    // -1 means it doesn't know
-                    if (i >= 0 && orientation >= 0) { 
-                        // Converts the values into radians and then calculate the SIN value
-                        // so to have contiguous values without the gap from 0 to 360.
-                        double previous = Math.sin(Math.toRadians(orientation));
-                        double current = Math.sin(Math.toRadians(i));
-                        double delta = Math.abs(previous - current);
-                        // Converts back the delta to degrees so we can compare with the THRESHOLD
-                        if (Math.toDegrees(Math.asin(delta)) > ORIENTATION_THRESHOLD) {
-                            logEntry("Reset from orientation change", false);
-                            resetTimer(alertInterval);
+                    // In any case moving from -1 to any value means that the phone has been picked up
+                    if (orientation == -1) {
+                        reset = true;
+                    } else {
+                        if (i >= 0) {
+                            // Converts the values into radians and then calculate the SIN value
+                            // so to have contiguous values without the gap from 0 to 360.
+                            double previous = Math.sin(Math.toRadians(orientation));
+                            double current = Math.sin(Math.toRadians(i));
+                            double delta = Math.abs(previous - current);
+                            // Converts back the delta to degrees so we can compare with the THRESHOLD
+                            if (Math.toDegrees(Math.asin(delta)) > ORIENTATION_THRESHOLD) {
+                                reset = true;
+                            }
                         }
+                    }
+                    if (reset == true) {
+                        logEntry("Reset from orientation change", false);
+                        resetTimer(interval);
+                        updateNotification();
                     }
                     orientation = i;
                 }
@@ -282,7 +292,7 @@ public class AlertService extends Service {
                         intervalFormat.print(sleepInterval.getStart().toLocalDateTime()),
                         intervalFormat.print(sleepInterval.getEnd().toLocalDateTime())
                 ),
-                true
+                false
 
         );
         if (alertCounts == 0) { /* Never go to sleep if there are alerts */
