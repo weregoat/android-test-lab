@@ -366,7 +366,6 @@ public class AlertService extends Service {
         if (wakeLock.isHeld()) {
             wakeLock.release();
         }
-        orientationEventListener.disable();
         stopServices();
 
     }
