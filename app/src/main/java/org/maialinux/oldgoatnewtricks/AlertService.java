@@ -228,12 +228,23 @@ public class AlertService extends Service {
                 boolean reset = false;
                 // Values go from -1 to 360
                 // -1 means it doesn't know
-                if (i != orientation) {
+                // Although the very method should be only called when there is a change in
+                // orientation, I prefer to re-iterate it my own way, to provide some insulation
+                // from the Android implementation.
+                if (i != orientation) { // If the orientation value has changed.
+                    /*
+                        I can imagine a few scenarios I need to act upon:
+                        - phone was lying and it got picked up
+                        - phone was oriented some way (remember always "vertically") and it changed more than
+                        - X degrees (the X degrees is to limit the reset calls as it always wobbles when
+                        - I hold it).
+                    */
                     // In any case moving from -1 to any value means that the phone has been picked up
-                    if (orientation == -1) {
+                    if (orientation == -1) { // remember i is <> than orientation (-1) so it's not -1
+                        // The phone was picked up from a previous flat state (or unknown orientation state, more precisely)
                         reset = true;
                     } else {
-                        if (i >= 0) {
+                        if (i != -1) { // If the phone didn't go from some orientation to unknown...
                             // Converts the values into radians and then calculate the SIN value
                             // so to have contiguous values without the gap from 0 to 360.
                             double previous = Math.sin(Math.toRadians(orientation));
@@ -255,13 +266,7 @@ public class AlertService extends Service {
             }
         };
 
-        if (orientationEventListener.canDetectOrientation() == true) {
-            Log.v(TAG, "Enabling orientation detection");
-            orientationEventListener.enable();
-        } else {
-            Log.w(TAG, "Cannot detect orientation; disabling");
-            orientationEventListener.disable();
-        }
+
         startServices();
     }
 
@@ -501,6 +506,14 @@ public class AlertService extends Service {
                     }
                 }
             }
+            /* Start listening to orientation change, if possible */
+            if (orientationEventListener.canDetectOrientation() == true) {
+                Log.d(TAG, "Enabling orientation detection");
+                orientationEventListener.enable();
+            } else {
+                Log.w(TAG, "Cannot detect orientation; disabling");
+                orientationEventListener.disable();
+            }
         }
 
     }
@@ -532,9 +545,6 @@ public class AlertService extends Service {
 
             }
         }
-        if (runningServices.containsKey(ORIENTATION_KEY) == false) {
-
-        }
     }
 
     private void stopServices() {
@@ -559,6 +569,7 @@ public class AlertService extends Service {
             notificationManager.deleteNotificationChannel(CHANNEL_ID);
         }
         servicesCount = 0;
+        orientationEventListener.disable(); // Disable orientation related reset.
     }
 
     private void calculateSleepInterval() {
