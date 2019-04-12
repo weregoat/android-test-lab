@@ -12,8 +12,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.hardware.Sensor;
-import android.hardware.SensorManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -42,7 +40,6 @@ import org.joda.time.format.PeriodFormatterBuilder;
 
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -461,7 +458,7 @@ public class AlertService extends Service {
             runningServices.put(TRIGGER_SERVICE_KEY, proximitySensorIntent);
         }
         if (runningServices.containsKey(POLLING_SERVICE_KEY) == false) {
-            accelerometerSensorIntent = new Intent(this, MovementService.class);
+            accelerometerSensorIntent = new Intent(this, PollingAlertService.class);
             runningServices.put(POLLING_SERVICE_KEY, accelerometerSensorIntent);
         }
     }

@@ -28,7 +28,7 @@
             android:exported="true"
             android:permission="android.permission.SEND_SMS" />
         <service
-            android:name=".MovementService"
+            android:name=".PollingAlertService"
             android:enabled="true"
             android:exported="true" />
 

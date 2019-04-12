@@ -28,7 +28,7 @@ import org.joda.time.format.ISODateTimeFormat;
 import java.util.List;
 
 
-public class MovementService extends Service {
+public class PollingAlertService extends Service {
 
 
     /* Listen intermittently to the sensor for a few seconds only to minimize battery usage */
@@ -53,7 +53,7 @@ public class MovementService extends Service {
     private static final float ALPHA = 0.8f; // Threshold for low-pass filter
 
 
-    private static final String TAG = "MovementService";
+    private static final String TAG = "PollingAlertService";
     private float acceleration = 0.0f;
     private float currentAcceleration;
     private float lastAcceleration;
@@ -103,7 +103,7 @@ public class MovementService extends Service {
         }
     };
 
-    public MovementService() {
+    public PollingAlertService() {
 
     }
 
