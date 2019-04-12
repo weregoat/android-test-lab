@@ -6,8 +6,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.app.TaskStackBuilder;
-import android.app.job.JobInfo;
-import android.app.job.JobScheduler;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -29,13 +27,11 @@ import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.telephony.SmsManager;
 import android.util.Log;
-import android.view.OrientationEventListener;
 
 
 import org.joda.time.DateTime;
 import org.joda.time.Days;
 import org.joda.time.Interval;
-import org.joda.time.LocalDateTime;
 import org.joda.time.LocalTime;
 import org.joda.time.Period;
 import org.joda.time.format.DateTimeFormat;
@@ -58,21 +54,19 @@ public class AlertService extends Service {
     private static final String SLEEP_TIME = "22:00";
     private static final String WAKE_TIME = "08:00";
     private static final int MAX_ALERTS = 3;
-    private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL/MAX_ALERTS);
+    private static final long ALERT_DELAY = Math.round(ALERT_INTERVAL / MAX_ALERTS);
     public static final String BROADCAST_ACTION = "org.maialinux.oldgoatnewtricks.alert_service_broadcast";
     public static final String RESET_MESSAGE = "reset";
     public static final String END_MESSAGE = "stop";
     public static final long MIN_DELAY = 30000;
-    private static final long DELAY = 10*60000; // default delay as ten minutes
+    private static final long DELAY = 10 * 60000; // default delay as ten minutes
     public static final long MAX_DELAY = 3600000;
-    private static final String PROXIMITY_SENSOR_KEY = "proximity sensor";
-    private static final String MOVEMENT_SENSOR_KEY = "movement sensor";
-    private static final String ORIENTATION_KEY = "orientation alert";
+    private static final String TRIGGER_SERVICE_KEY = "trigger service";
+    private static final String POLLING_SERVICE_KEY = "polling service";
     public static final String INTERVAL_KEY = "interval";
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
-
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -94,7 +88,6 @@ public class AlertService extends Service {
     Intent broadCastIntent;
     Intent accelerometerSensorIntent;
     Intent proximitySensorIntent;
-    Intent geoMagneticSensorIntent;
     Intent resetIntent;
     Intent alarmIntent;
 
@@ -146,7 +139,7 @@ public class AlertService extends Service {
                         }
                     }
                 } else {
-                    delay = Math.round(interval/6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
+                    delay = Math.round(interval / 6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
                 }
                 if (delay > millis) {
                     delay = millis;
@@ -159,7 +152,7 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
-                delay = Math.round(interval/6);
+                delay = Math.round(interval / 6);
                 resetTimer(interval + sleepDelay);
             }
 
@@ -217,11 +210,10 @@ public class AlertService extends Service {
         notificationManager = NotificationManagerCompat.from(this);
         notification = mBuilder.build();
         startForeground(99, notification);
-        logEntry(String.format("Interval: %d", interval/1000), false);
+        logEntry(String.format("Interval: %d", interval / 1000), false);
         alarmIntent = new Intent(this, AlarmService.class);
         powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
-
 
 
         startServices();
@@ -289,10 +281,10 @@ public class AlertService extends Service {
                     logEntry("Acquiring wake-lock", true);
                 }
             } else {
-               if (wakeLock.isHeld()) {
+                if (wakeLock.isHeld()) {
                     wakeLock.release();
                     logEntry("Releasing wake-lock as phone is not plugged-in", true);
-               }
+                }
             }
             sleepDelay = 0;
         }
@@ -302,8 +294,7 @@ public class AlertService extends Service {
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId)
-    {
+    public int onStartCommand(Intent intent, int flags, int startId) {
         logEntry("Start alert service", false);
         alertCounts = 0;
         reloadConfig();
@@ -314,8 +305,7 @@ public class AlertService extends Service {
     }
 
     @Override
-    public void onDestroy()
-    {
+    public void onDestroy() {
         logEntry("Destroy alert service", true);
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(broadcastReceiver);
@@ -330,27 +320,26 @@ public class AlertService extends Service {
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-           boolean resetMessage = intent.getBooleanExtra(RESET_MESSAGE, false);
-           boolean endMessage = intent.getBooleanExtra(END_MESSAGE, false);
-           if (resetMessage == true) {
+            boolean resetMessage = intent.getBooleanExtra(RESET_MESSAGE, false);
+            boolean endMessage = intent.getBooleanExtra(END_MESSAGE, false);
+            if (resetMessage == true) {
                 logEntry("Reset broadcast received; resetting timer", false);
-               alertCounts = 0;
-               smsSent = 0;
-               resetTimer(interval);
-               updateNotification();
+                alertCounts = 0;
+                smsSent = 0;
+                resetTimer(interval);
+                updateNotification();
 
-           }
-           if (endMessage == true) {
-               logEntry("End broadcast received; stopping service", false);
-               stopSelf();
-           }
+            }
+            if (endMessage == true) {
+                logEntry("End broadcast received; stopping service", false);
+                stopSelf();
+            }
         }
     };
 
 
-    private void updateNotificationText(String text)
-    {
-        if (! text.isEmpty()) {
+    private void updateNotificationText(String text) {
+        if (!text.isEmpty()) {
             mBuilder.setContentText(text);
             mBuilder.setWhen(System.currentTimeMillis());
             notification = mBuilder.build();
@@ -358,16 +347,15 @@ public class AlertService extends Service {
         }
     }
 
-    private void reloadConfig()
-    {
+    private void reloadConfig() {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        interval = getLong(sharedPreferences, "interval", String.valueOf(interval/1000), interval/1000, TAG)*60000;
+        interval = getLong(sharedPreferences, "interval", String.valueOf(interval / 1000), interval / 1000, TAG) * 60000;
         wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
         maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
         phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
         message = getString(sharedPreferences, "text_message", DEFAULT_MESSAGE, TAG);
-        alertInterval = Math.round(interval/maxAlerts);
+        alertInterval = Math.round(interval / maxAlerts);
         DateTime now = new DateTime();
         sleepDateTime = new DateTime()
                 .withDate(now.getYear(), now.getMonthOfYear(), now.getDayOfMonth())
@@ -422,7 +410,7 @@ public class AlertService extends Service {
     }
 
     public static String getString(SharedPreferences sharedPreferences, String preferenceKey, String defaultValue, String tag) {
-       String value = defaultValue;
+        String value = defaultValue;
         try {
             if (sharedPreferences.contains(preferenceKey)) {
                 value = sharedPreferences.getString(preferenceKey, defaultValue);
@@ -433,9 +421,8 @@ public class AlertService extends Service {
         return value.trim();
     }
 
-    private void sendSMS(String phoneNumber, String message)
-    {
-        if (!phoneNumber.isEmpty() && ! message.isEmpty()) {
+    private void sendSMS(String phoneNumber, String message) {
+        if (!phoneNumber.isEmpty() && !message.isEmpty()) {
             SmsManager sms = SmsManager.getDefault();
             sms.sendTextMessage(phoneNumber, null, message, null, null);
             logEntry("SMS sent", true);
@@ -468,38 +455,21 @@ public class AlertService extends Service {
     }
 
     private void getServices() {
-        SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
         servicesCount = 0;
-        for (int i = 0; i < sensorList.size(); i++) {
-            Log.d(TAG, sensorList.get(i).getName());
-            int sensorType = sensorList.get(i).getType();
-            switch (sensorType) {
-                case Sensor.TYPE_ACCELEROMETER:
-                case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
-                case Sensor.TYPE_MAGNETIC_FIELD:
-                case Sensor.TYPE_GYROSCOPE:
-                case Sensor.TYPE_GYROSCOPE_UNCALIBRATED:
-                if (runningServices.containsKey(MOVEMENT_SENSOR_KEY) == false) {
-                        accelerometerSensorIntent = new Intent(this, MovementService.class);
-                        runningServices.put(MOVEMENT_SENSOR_KEY, accelerometerSensorIntent);
-                    }
-                    break;
-                case Sensor.TYPE_PROXIMITY:
-                    if (runningServices.containsKey(PROXIMITY_SENSOR_KEY) == false) {
-                        proximitySensorIntent = new Intent(this, ProximityAlertService.class);
-                        runningServices.put(PROXIMITY_SENSOR_KEY, proximitySensorIntent);
-                    }
-                    break;
-
-            }
+        if (runningServices.containsKey(TRIGGER_SERVICE_KEY) == false) {
+            proximitySensorIntent = new Intent(this, TriggerAlertService.class);
+            runningServices.put(TRIGGER_SERVICE_KEY, proximitySensorIntent);
+        }
+        if (runningServices.containsKey(POLLING_SERVICE_KEY) == false) {
+            accelerometerSensorIntent = new Intent(this, MovementService.class);
+            runningServices.put(POLLING_SERVICE_KEY, accelerometerSensorIntent);
         }
     }
 
     private void stopServices() {
         stopService(alarmIntent);
         getServices();
-        Iterator<Map.Entry<String,Intent>> iterator = runningServices.entrySet().iterator();
+        Iterator<Map.Entry<String, Intent>> iterator = runningServices.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Intent> entry = iterator.next();
             String serviceName = entry.getKey();
@@ -533,7 +503,7 @@ public class AlertService extends Service {
         }
 
         if (wakeUpDateTime.isBefore(sleepDateTime)) {
-                wakeUpDateTime = wakeUpDateTime.plusDays(1);
+            wakeUpDateTime = wakeUpDateTime.plusDays(1);
         }
 
         /* If the alert time is going to expire during sleep time, go to sleep now */
@@ -547,7 +517,7 @@ public class AlertService extends Service {
 
     private void resetTimer(long interval) {
         logEntry("Reset timer", false);
-        logEntry(String.format("Interval: %d seconds", interval/1000), false);
+        logEntry(String.format("Interval: %d seconds", interval / 1000), false);
         if (isSleepTime() == true) {
             interval = sleepInterval.toDurationMillis();
         }

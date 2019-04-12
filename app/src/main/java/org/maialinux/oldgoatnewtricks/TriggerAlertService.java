@@ -1,8 +1,10 @@
 package org.maialinux.oldgoatnewtricks;
 
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -12,19 +14,17 @@ import android.support.annotation.Nullable;
 import android.util.Log;
 import java.util.List;
 
-public class ProximityAlertService extends Service {
+public class TriggerAlertService extends Service {
 
-    private static String TAG = ProximityAlertService.class.getSimpleName();
+    private static String TAG = TriggerAlertService.class.getSimpleName();
     private SensorManager sensorManager;
+    private BroadcastReceiver br = new SystemBroadcastReceiver();
     private final SensorEventListener proximityEventListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
             float proximityValue = event.values[0];
             if (proximityValue < event.sensor.getMaximumRange()) {
-                Log.d(TAG, String.format("Proximity triggered with a value of %f", event.values[0]));
-                Intent broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
-                broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
-                sendBroadcast(broadCastIntent);
+                sendResetBroadcast(String.format("Proximity triggered with a value of %f", event.values[0]));
             }
         }
 
@@ -45,6 +45,17 @@ public class ProximityAlertService extends Service {
                 break;
             }
         }
+
+        IntentFilter filter = new IntentFilter();
+        /* List of possible action that may be read as activity from the user */
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_ANSWER);
+        filter.addAction(Intent.ACTION_POWER_CONNECTED);
+        filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+
+        this.registerReceiver(br, filter);
     }
 
     @Override
@@ -58,6 +69,7 @@ public class ProximityAlertService extends Service {
         if (proximityEventListener != null && sensorManager != null) {
             sensorManager.unregisterListener(proximityEventListener);
         }
+        unregisterReceiver(br);
         stopSelf();
     }
 
@@ -67,5 +79,19 @@ public class ProximityAlertService extends Service {
         return null;
     }
 
+
+    public class SystemBroadcastReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            sendResetBroadcast(String.format("Received system broadcast for action: %s", intent.getAction()));
+        }
+    }
+
+    private void sendResetBroadcast(String logMessage) {
+        Log.d(TAG, logMessage);
+        Intent broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
+        broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
+        sendBroadcast(broadCastIntent);
+    }
 
 }
