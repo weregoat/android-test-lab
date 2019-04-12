@@ -17,6 +17,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.view.OrientationEventListener;
 import android.widget.Toast;
 
 import org.joda.time.Interval;
@@ -40,6 +41,8 @@ public class MovementService extends Service {
     private static final double ACCELERATION_THRESHOLD = 0.9f; // This much acceleration to trigger movement
     private static final double ROTATION_THRESHOLD = 0.5f; // This much rotational acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
+    public static final int ORIENTATION_THRESHOLD = 10; // In degrees
+
 
     /*
      * time smoothing constant for low-pass filter
@@ -60,6 +63,8 @@ public class MovementService extends Service {
     private boolean sensorRunning = false;
     private float[] lastGeoMagneticValues;
     private long interval = AlertService.INTERVAL;
+    private int orientation = -1;
+    private OrientationEventListener orientationEventListener;
 
     Handler accelHandler = new Handler();
     Runnable accelRunnable = new Runnable() {
@@ -107,6 +112,48 @@ public class MovementService extends Service {
         registerReceiver(broadcastReceiver, new IntentFilter(AlertService.BROADCAST_ACTION));
         broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
         logEntry("Create movement detection service", false);
+        orientationEventListener = new OrientationEventListener(getApplicationContext(), SensorManager.SENSOR_DELAY_NORMAL) {
+            @Override
+            public void onOrientationChanged(int i) {
+                boolean reset = false;
+                // Values go from -1 to 360
+                // -1 means it doesn't know
+                // Although the very method should be only called when there is a change in
+                // orientation, I prefer to re-iterate it my own way, to provide some insulation
+                // from the Android implementation.
+                if (i != orientation) { // If the orientation value has changed.
+                    /*
+                        I can imagine a few scenarios I need to act upon:
+                        - phone was lying and it got picked up
+                        - phone was oriented some way (remember always "vertically") and it changed more than
+                        - X degrees (the X degrees is to limit the reset calls as it always wobbles when
+                        - I hold it).
+                    */
+                    // In any case moving from -1 to any value means that the phone has been picked up
+                    if (orientation == -1) { // remember i is <> than orientation (-1) so it's not -1
+                        // The phone was picked up from a previous flat state (or unknown orientation state, more precisely)
+                        reset = true;
+                    } else {
+                        if (i != -1) { // If the phone didn't go from some orientation to unknown...
+                            // Converts the values into radians and then calculate the SIN value
+                            // so to have contiguous values without the gap from 0 to 360.
+                            double previous = Math.sin(Math.toRadians(orientation));
+                            double current = Math.sin(Math.toRadians(i));
+                            double delta = Math.abs(previous - current);
+                            // Converts back the delta to degrees so we can compare with the THRESHOLD
+                            if (Math.toDegrees(Math.asin(delta)) > ORIENTATION_THRESHOLD) {
+                                reset = true;
+                            }
+                        }
+                    }
+                    orientation = i;
+                    if (reset == true) {
+                        sendResetBroadcast();
+                    }
+                }
+            }
+        };
+
         accelRunnable.run();
     }
 
@@ -255,6 +302,16 @@ public class MovementService extends Service {
                         break;
                 }
             }
+            /* Start listening to orientation change, if possible */
+            if (orientationEventListener.canDetectOrientation() == true) {
+                Log.d(TAG, "Enabling orientation detection");
+                orientationEventListener.enable();
+                sensorRunning = true;
+            } else {
+                Log.w(TAG, "Cannot detect orientation; disabling");
+                orientationEventListener.disable();
+            }
+
             //sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
             //sensorManager.registerListener(getMagneticEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
             //sensorRunning = true;
@@ -267,6 +324,7 @@ public class MovementService extends Service {
             sensorManager.unregisterListener(accelerometerEventListener);
             sensorManager.unregisterListener(geoMagneticEventListener);
             sensorManager.unregisterListener(gyroscopeEventListener);
+            orientationEventListener.disable(); // Disable orientation related reset.
             sensorRunning = false;
         }
     }
@@ -285,6 +343,7 @@ public class MovementService extends Service {
         broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
         sendBroadcast(broadCastIntent);
     }
+
 
 
 

@@ -72,8 +72,7 @@ public class AlertService extends Service {
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
-    private OrientationEventListener orientationEventListener;
-    public static final int ORIENTATION_THRESHOLD = 10; // In degrees
+
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -90,7 +89,7 @@ public class AlertService extends Service {
     Interval sleepInterval;
     String message = DEFAULT_MESSAGE;
     int smsSent = 0;
-    int orientation = -1;
+
 
     Intent broadCastIntent;
     Intent accelerometerSensorIntent;
@@ -222,49 +221,7 @@ public class AlertService extends Service {
         alarmIntent = new Intent(this, AlarmService.class);
         powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
-        orientationEventListener = new OrientationEventListener(getApplicationContext(), SensorManager.SENSOR_DELAY_NORMAL) {
-            @Override
-            public void onOrientationChanged(int i) {
-                boolean reset = false;
-                // Values go from -1 to 360
-                // -1 means it doesn't know
-                // Although the very method should be only called when there is a change in
-                // orientation, I prefer to re-iterate it my own way, to provide some insulation
-                // from the Android implementation.
-                if (i != orientation) { // If the orientation value has changed.
-                    /*
-                        I can imagine a few scenarios I need to act upon:
-                        - phone was lying and it got picked up
-                        - phone was oriented some way (remember always "vertically") and it changed more than
-                        - X degrees (the X degrees is to limit the reset calls as it always wobbles when
-                        - I hold it).
-                    */
-                    // In any case moving from -1 to any value means that the phone has been picked up
-                    if (orientation == -1) { // remember i is <> than orientation (-1) so it's not -1
-                        // The phone was picked up from a previous flat state (or unknown orientation state, more precisely)
-                        reset = true;
-                    } else {
-                        if (i != -1) { // If the phone didn't go from some orientation to unknown...
-                            // Converts the values into radians and then calculate the SIN value
-                            // so to have contiguous values without the gap from 0 to 360.
-                            double previous = Math.sin(Math.toRadians(orientation));
-                            double current = Math.sin(Math.toRadians(i));
-                            double delta = Math.abs(previous - current);
-                            // Converts back the delta to degrees so we can compare with the THRESHOLD
-                            if (Math.toDegrees(Math.asin(delta)) > ORIENTATION_THRESHOLD) {
-                                reset = true;
-                            }
-                        }
-                    }
-                    if (reset == true) {
-                        logEntry("Reset from orientation change", false);
-                        resetTimer(interval);
-                        updateNotification();
-                    }
-                    orientation = i;
-                }
-            }
-        };
+
 
 
         startServices();
@@ -505,14 +462,7 @@ public class AlertService extends Service {
                     }
                 }
             }
-            /* Start listening to orientation change, if possible */
-            if (orientationEventListener.canDetectOrientation() == true) {
-                Log.d(TAG, "Enabling orientation detection");
-                orientationEventListener.enable();
-            } else {
-                Log.w(TAG, "Cannot detect orientation; disabling");
-                orientationEventListener.disable();
-            }
+
         }
 
     }
@@ -530,7 +480,7 @@ public class AlertService extends Service {
                 case Sensor.TYPE_MAGNETIC_FIELD:
                 case Sensor.TYPE_GYROSCOPE:
                 case Sensor.TYPE_GYROSCOPE_UNCALIBRATED:
-                    if (runningServices.containsKey(MOVEMENT_SENSOR_KEY) == false) {
+                if (runningServices.containsKey(MOVEMENT_SENSOR_KEY) == false) {
                         accelerometerSensorIntent = new Intent(this, MovementService.class);
                         runningServices.put(MOVEMENT_SENSOR_KEY, accelerometerSensorIntent);
                     }
@@ -568,7 +518,7 @@ public class AlertService extends Service {
             notificationManager.deleteNotificationChannel(CHANNEL_ID);
         }
         servicesCount = 0;
-        orientationEventListener.disable(); // Disable orientation related reset.
+
     }
 
     private void calculateSleepInterval() {
