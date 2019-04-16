@@ -234,8 +234,10 @@ public class AlertService extends Service {
     }
 
     private boolean isSleepTime() {
-        boolean sleep = false;
-        calculateSleepInterval();
+        if (alertCounts > 0) { /* Never go to sleep if there are alerts */
+            return false;
+        }
+        calculateSleepInterval(expirationTime);
         DateTimeFormatter intervalFormat = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(
                 String.format(
@@ -246,9 +248,7 @@ public class AlertService extends Service {
                 false
 
         );
-        if (alertCounts == 0) { /* Never go to sleep if there are alerts */
-            sleep = sleepInterval.containsNow();
-        }
+        boolean sleep = sleepInterval.containsNow();
         if (sleep == true) {
             if (wakeLock.isHeld()) {
                 wakeLock.release();
@@ -285,7 +285,6 @@ public class AlertService extends Service {
             }
             sleepDelay = 0;
         }
-
         return sleep;
 
     }
@@ -360,7 +359,7 @@ public class AlertService extends Service {
         wakeUpDateTime = new DateTime()
                 .withDate(now.getYear(), now.getMonthOfYear(), now.getDayOfMonth())
                 .withMillisOfDay(wakeUpTime.getMillisOfDay());
-        calculateSleepInterval();
+        calculateSleepInterval(expirationTime);
     }
 
     public static Long getLong(SharedPreferences sharedPreferences, String preferenceKey, String defaultPreferenceValue, Long defaultValue, String tag) {
@@ -488,15 +487,15 @@ public class AlertService extends Service {
 
     }
 
-    private void calculateSleepInterval() {
+    private void calculateSleepInterval(long expirationTime) {
         DateTime now = new DateTime();
-        int days = Days.daysBetween(sleepDateTime.toInstant(), now.toInstant()).getDays();
-        if (days > 0) {
-            sleepDateTime = sleepDateTime.plusDays(days);
+        int daysToSleepTime = Days.daysBetween(sleepDateTime.toInstant(), now.toInstant()).getDays();
+        if (daysToSleepTime > 0) {
+            sleepDateTime = sleepDateTime.plusDays(daysToSleepTime);
         }
-        days = Days.daysBetween(wakeUpDateTime.toInstant(), now.toInstant()).getDays();
-        if (days > 0) {
-            wakeUpDateTime = wakeUpDateTime.plusDays(days);
+        int daysToWakeUpTime = Days.daysBetween(wakeUpDateTime.toInstant(), now.toInstant()).getDays();
+        if (daysToWakeUpTime > 0) {
+            wakeUpDateTime = wakeUpDateTime.plusDays(daysToWakeUpTime);
         }
 
         if (wakeUpDateTime.isBefore(sleepDateTime)) {
