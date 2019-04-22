@@ -521,6 +521,7 @@ public class AlertService extends Service {
     }
 
     private void updateNotification() {
+        calculateSleepInterval(expirationTime);
         DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
         if (alertCounts > 0) {
