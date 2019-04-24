@@ -94,6 +94,7 @@ public class AlertService extends Service {
     DateTime sleepDateTime;
     HashMap<String, Intent> runningServices = new HashMap<>();
     int servicesCount = 0;
+    boolean sleepNow = false;
 
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
@@ -235,6 +236,7 @@ public class AlertService extends Service {
 
     private boolean isSleepTime() {
         if (alertCounts > 0) { /* Never go to sleep if there are alerts */
+            sleepNow = false;
             return false;
         }
         calculateSleepInterval(expirationTime);
@@ -285,6 +287,7 @@ public class AlertService extends Service {
             }
             sleepDelay = 0;
         }
+        sleepNow = sleep;
         return sleep;
 
     }
@@ -489,11 +492,13 @@ public class AlertService extends Service {
 
     private void calculateSleepInterval(long expirationTime) {
         DateTime now = new DateTime();
-        int daysToSleepTime = Days.daysBetween(sleepDateTime.toInstant(), now.toInstant()).getDays();
+        sleepDateTime = sleepDateTime.minusDays(2);
+        wakeUpDateTime = wakeUpDateTime.minusDays(3);
+        int daysToSleepTime = getDays(now, sleepDateTime);
         if (daysToSleepTime > 0) {
             sleepDateTime = sleepDateTime.plusDays(daysToSleepTime);
         }
-        int daysToWakeUpTime = Days.daysBetween(wakeUpDateTime.toInstant(), now.toInstant()).getDays();
+        int daysToWakeUpTime = getDays(now, wakeUpDateTime);
         if (daysToWakeUpTime > 0) {
             wakeUpDateTime = wakeUpDateTime.plusDays(daysToWakeUpTime);
         }
@@ -501,7 +506,6 @@ public class AlertService extends Service {
         if (wakeUpDateTime.isBefore(sleepDateTime)) {
             wakeUpDateTime = wakeUpDateTime.plusDays(1);
         }
-
         /* If the alert time is going to expire during sleep time, go to sleep now */
         DateTime alertDateTime = new DateTime(expirationTime);
         if (alertDateTime.isAfter(sleepDateTime) && alertDateTime.isBefore(wakeUpDateTime)) {
@@ -521,13 +525,12 @@ public class AlertService extends Service {
     }
 
     private void updateNotification() {
-        calculateSleepInterval(expirationTime);
         DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
         String notificationText = String.format("Timer expiring at %s", formatter.print(new DateTime(expirationTime)));
         if (alertCounts > 0) {
             notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
         } else {
-            if (isSleepTime() == true) {
+            if (sleepNow == true) {
                 DateTime today = new DateTime(System.currentTimeMillis());
                 DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
                 if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
@@ -560,6 +563,15 @@ public class AlertService extends Service {
             notificationManager.createNotificationChannel(channel);
 
         }
+    }
+
+    private int getDays(DateTime now, DateTime target) {
+        int days = 0;
+        if (target.isBefore(now)) {
+            days = Days.daysBetween(target, now).getDays() + 1;
+        }
+        return days;
+
     }
 
 
