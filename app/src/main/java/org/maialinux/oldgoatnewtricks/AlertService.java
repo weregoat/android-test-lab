@@ -94,7 +94,6 @@ public class AlertService extends Service {
     DateTime sleepDateTime;
     HashMap<String, Intent> runningServices = new HashMap<>();
     int servicesCount = 0;
-    boolean sleepNow = false;
 
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
@@ -236,7 +235,6 @@ public class AlertService extends Service {
 
     private boolean isSleepTime() {
         if (alertCounts > 0) { /* Never go to sleep if there are alerts */
-            sleepNow = false;
             return false;
         }
         calculateSleepInterval(expirationTime);
@@ -287,7 +285,6 @@ public class AlertService extends Service {
             }
             sleepDelay = 0;
         }
-        sleepNow = sleep;
         return sleep;
 
     }
@@ -313,7 +310,10 @@ public class AlertService extends Service {
             wakeLock.release();
         }
         stopServices();
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            notificationManager.deleteNotificationChannel(CHANNEL_ID);
+        }
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -482,10 +482,6 @@ public class AlertService extends Service {
             }
         }
         runningServices.clear();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            notificationManager.deleteNotificationChannel(CHANNEL_ID);
-        }
         servicesCount = 0;
 
     }
@@ -516,12 +512,11 @@ public class AlertService extends Service {
     }
 
     private void resetTimer(long interval) {
-        logEntry("Reset timer", false);
-        logEntry(String.format("Interval: %d seconds", interval / 1000), false);
-        if (isSleepTime() == true) {
-            interval = sleepInterval.toDurationMillis();
+        if (isSleepTime() == false) {
+            logEntry("Reset timer", false);
+            logEntry(String.format("Interval: %d seconds", interval / 1000), false);
+            expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
         }
-        expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time
     }
 
     private void updateNotification() {
@@ -530,7 +525,7 @@ public class AlertService extends Service {
         if (alertCounts > 0) {
             notificationText = String.format("Alert %d; %s", alertCounts, notificationText);
         } else {
-            if (sleepNow == true) {
+            if (isSleepTime() == true) {
                 DateTime today = new DateTime(System.currentTimeMillis());
                 DateTime wakeup = new DateTime(System.currentTimeMillis() + sleepDelay);
                 if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
