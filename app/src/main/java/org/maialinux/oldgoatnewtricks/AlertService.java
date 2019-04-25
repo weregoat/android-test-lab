@@ -488,8 +488,6 @@ public class AlertService extends Service {
 
     private void calculateSleepInterval(long expirationTime) {
         DateTime now = new DateTime();
-        sleepDateTime = sleepDateTime.minusDays(2);
-        wakeUpDateTime = wakeUpDateTime.minusDays(3);
         int daysToSleepTime = getDays(now, sleepDateTime);
         if (daysToSleepTime > 0) {
             sleepDateTime = sleepDateTime.plusDays(daysToSleepTime);
