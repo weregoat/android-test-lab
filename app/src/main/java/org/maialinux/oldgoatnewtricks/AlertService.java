@@ -38,6 +38,7 @@ import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
@@ -248,7 +249,8 @@ public class AlertService extends Service {
                 false
 
         );
-        boolean sleep = sleepInterval.containsNow();
+        DateTime now = new DateTime();
+        boolean sleep = sleepInterval.contains(now);
         if (sleep == true) {
             if (wakeLock.isHeld()) {
                 wakeLock.release();
@@ -285,6 +287,7 @@ public class AlertService extends Service {
             }
             sleepDelay = 0;
         }
+
         return sleep;
 
     }
@@ -351,6 +354,11 @@ public class AlertService extends Service {
         interval = getLong(sharedPreferences, "interval", String.valueOf(interval / 1000), interval / 1000, TAG) * 60000;
         wakeUpTime = getTime(sharedPreferences, "wake_up", WAKE_TIME, TAG);
         sleepTime = getTime(sharedPreferences, "sleep", SLEEP_TIME, TAG);
+        if (wakeUpTime.isAfter(sleepTime)) {
+            LocalTime t = sleepTime;
+            sleepTime = wakeUpTime;
+            wakeUpTime = t;
+        }
         maxAlerts = getInteger(sharedPreferences, "max_warnings", String.valueOf(maxAlerts), MAX_ALERTS, TAG);
         phoneNumber = getString(sharedPreferences, "phone_number", " ", TAG);
         message = getString(sharedPreferences, "text_message", DEFAULT_MESSAGE, TAG);
@@ -488,25 +496,32 @@ public class AlertService extends Service {
 
     private void calculateSleepInterval(long expirationTime) {
         DateTime now = new DateTime();
-        int daysToSleepTime = getDays(now, sleepDateTime);
-        if (daysToSleepTime > 0) {
-            sleepDateTime = sleepDateTime.plusDays(daysToSleepTime);
+        if (now.isAfter(sleepDateTime)) {
+            int daysToSleepTime = getDays(now, sleepDateTime);
+            if (daysToSleepTime > 0) {
+                sleepDateTime = sleepDateTime.plusDays(daysToSleepTime);
+            }
         }
-        int daysToWakeUpTime = getDays(now, wakeUpDateTime);
-        if (daysToWakeUpTime > 0) {
-            wakeUpDateTime = wakeUpDateTime.plusDays(daysToWakeUpTime);
+        if (now.isAfter(wakeUpDateTime)) {
+            int daysToWakeUpTime = getDays(now, wakeUpDateTime);
+            if (daysToWakeUpTime > 0) {
+                wakeUpDateTime = wakeUpDateTime.plusDays(daysToWakeUpTime);
+            }
+            if (wakeUpDateTime.isBefore(sleepDateTime)) {
+                wakeUpDateTime = wakeUpDateTime.plusDays(1);
+            }
         }
 
-        if (wakeUpDateTime.isBefore(sleepDateTime)) {
-            wakeUpDateTime = wakeUpDateTime.plusDays(1);
-        }
         /* If the alert time is going to expire during sleep time, go to sleep now */
         DateTime alertDateTime = new DateTime(expirationTime);
-        if (alertDateTime.isAfter(sleepDateTime) && alertDateTime.isBefore(wakeUpDateTime)) {
+        LocalTime time = new LocalTime();
+        if ((alertDateTime.isAfter(sleepDateTime) && alertDateTime.isBefore(wakeUpDateTime)) || time.isBefore(wakeUpTime)) {
             sleepInterval = new Interval(now.toDateTime(), wakeUpDateTime.toDateTime());
         } else {
             sleepInterval = new Interval(sleepDateTime.toDateTime(), wakeUpDateTime.toDateTime());
         }
+
+
     }
 
     private void resetTimer(long interval) {
