@@ -244,8 +244,6 @@ public class AlertService extends Service {
             if (sleepInterval.containsNow() || sleepInterval.contains(new DateTime(expirationTime))) {
                 logEntry("Going to sleep", false);
                 sleep = true;
-            }
-            if (sleep == true) {
                 if (wakeLock.isHeld()) {
                     wakeLock.release();
                 }
@@ -263,6 +261,7 @@ public class AlertService extends Service {
                 expirationTime = System.currentTimeMillis() + sleepDelay + interval;
                 logEntry(String.format("Sleeping for %s", formatter.print(sleepPeriod)), true);
             } else {
+                sleep = false;
                 // https://developer.android.com/training/monitoring-device-state/battery-monitoring#java
                 IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
                 Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
@@ -524,9 +523,10 @@ public class AlertService extends Service {
         /* The sleep interval should always be from the next sleeping time to the wake up time after it */
         /* This means that we need to shift the two dates at the same time */
         /* But we also need to avoid to shift them too early */
-        if ((!sleepInterval.contains(now)) && now.isAfter(wakeUpDateTime)) {
-            wakeUpDateTime = wakeUpDateTime.plusDays(1);
-            sleepDateTime = sleepDateTime.plusDays(1);
+        if (!sleeping && now.isAfter(wakeUpDateTime)) {
+            int days = getDays(now, wakeUpDateTime); // How many days between now and wake-up time
+            wakeUpDateTime = wakeUpDateTime.plusDays(days);
+            sleepDateTime = sleepDateTime.plusDays(days);
             sleepInterval = new Interval(sleepDateTime, wakeUpDateTime);
         }
         DateTimeFormatter intervalFormat = ISODateTimeFormat.dateTimeNoMillis();
@@ -561,7 +561,7 @@ public class AlertService extends Service {
                 if (today.dayOfMonth().getAsString() != wakeup.dayOfMonth().getAsString()) {
                     formatter = DateTimeFormat.forPattern("EEEEE HH:mm").withLocale(Locale.getDefault());
                 }
-                notificationText = String.format("Sleeping until %s", formatter.print(new DateTime(System.currentTimeMillis() + sleepDelay)));
+                notificationText = String.format("Sleeping until %s", formatter.print(wakeup));
             }
         }
         logEntry(notificationText, true);
