@@ -323,6 +323,7 @@ public class AlertService extends Service {
                 alertCounts = 0;
                 smsSent = 0;
                 resetTimer(interval);
+                isSleepTime();
                 updateNotification();
 
             }
@@ -528,6 +529,7 @@ public class AlertService extends Service {
             wakeUpDateTime = wakeUpDateTime.plusDays(days);
             sleepDateTime = sleepDateTime.plusDays(days);
             sleepInterval = new Interval(sleepDateTime, wakeUpDateTime);
+            logEntry("Shifting sleep interval %d days ahead", false);
         }
         DateTimeFormatter intervalFormat = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(
