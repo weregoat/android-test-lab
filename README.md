@@ -1,7 +1,10 @@
 # android-test-lab
-Note for whomever may stuble upon this: it is just a repository to store experiments and prototypes for my own androidpet project. 
+Note for whomever may stumble upon this: it is just a repository to store experiments and prototypes for my own android pet project.
 
-_dev_ and _master_ branches have working prototypes (stress on prototype) that I plan to base the *dead man handle* app on (I am still learning).
+It started with the dissatisfaction with the existing dead-man switch/handle apps. It's not that they are bad (they are surely better than this), just that they don't cover correctly my scenario.
+So I decided to try out to write my own and have a look at developing for Android, in the bargain.
+
+_dev_ and _master_ branches have working prototypes (stress on prototype) that I plan to base a more refined app on (I am still learning). Maybe. 
 
 Other branches are there only to save for my future self some particular way to do things. 
 
