@@ -38,8 +38,8 @@ public class PollingAlertService extends Service {
      */
     private static final long SLEEP_INTERVAL = 1*60*1000; //  1 minute between checks
     private static final long LISTENING_INTERVAL = 30*1000; // Listen for 30 seconds
-    private static final double ACCELERATION_THRESHOLD = 0.3f; // This much acceleration to trigger movement
-    private static final double ROTATION_THRESHOLD = 0.5f; // This much rotational acceleration to trigger movement
+    public static final double ACCELERATION_THRESHOLD = 0.8f; // This much linear acceleration to trigger movement
+    public static final double ROTATION_THRESHOLD = 0.8f; // This much rotational acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
     public static final int ORIENTATION_THRESHOLD = 10; // In degrees
 
@@ -50,7 +50,7 @@ public class PollingAlertService extends Service {
      * See: http://en.wikipedia.org/wiki/Low-pass_filter#Discrete-time_realization
      * From: http://blog.thomnichols.org/2011/08/smoothing-sensor-data-with-a-low-pass-filter
      */
-    private static final float ALPHA = 0.2f; // Threshold for low-pass filter
+    public static final float ALPHA = 0.8f; // Threshold for low-pass filter
 
 
     private static final String TAG = "PollingAlertService";
@@ -65,6 +65,9 @@ public class PollingAlertService extends Service {
     private long interval = AlertService.INTERVAL;
     private int orientation = -1;
     private OrientationEventListener orientationEventListener;
+    private double accelerationThreshold = ACCELERATION_THRESHOLD;
+    private double rotationThreshold = ROTATION_THRESHOLD;
+    private float lowPassThreshold = ALPHA;
 
     Handler accelHandler = new Handler();
     Runnable accelRunnable = new Runnable() {
@@ -213,9 +216,9 @@ public class PollingAlertService extends Service {
                 lastAcceleration = currentAcceleration;
                 currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
                 float delta = currentAcceleration - lastAcceleration;
-                acceleration = Math.abs(acceleration * ALPHA + delta); // Low-pass filter removing the high frequency noise
+                acceleration = Math.abs(acceleration * lowPassThreshold + delta); // Low-pass filter removing the high frequency noise
                 Log.d(TAG, String.format("acceleration: %f", acceleration));
-                if (acceleration >= ACCELERATION_THRESHOLD) {
+                if (acceleration >= accelerationThreshold) {
                     logEntry("Accelerometer sensor triggered", true);
                     reset = true;
                     sendResetBroadcast();
@@ -238,7 +241,7 @@ public class PollingAlertService extends Service {
                 float z = event.values[2];
                 float omegaMagnitude = (float) Math.sqrt((double) (x*x + y*y + z*z));
                 Log.d(TAG, String.format("axis rotation acceleration: %f", omegaMagnitude));
-                if (omegaMagnitude >= ROTATION_THRESHOLD) {
+                if (omegaMagnitude >= rotationThreshold) {
                     logEntry("Gyroscope sensor triggered", true);
                     reset = true;
                     sendResetBroadcast();
@@ -259,7 +262,22 @@ public class PollingAlertService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             interval = intent.getLongExtra(AlertService.INTERVAL_KEY, AlertService.INTERVAL);
+            accelerationThreshold = intent.getDoubleExtra(AlertService.ACCELEROMETER_THRESHOLD_KEY, ACCELERATION_THRESHOLD);
+            rotationThreshold = intent.getDoubleExtra(AlertService.GYROSCOPE_THRESHOLD_KEY, ROTATION_THRESHOLD);
+            lowPassThreshold = intent.getFloatExtra(AlertService.LOW_PASS_THRESHOLD_KEY, ALPHA);
         }
+        logEntry(
+                String.format("linear acceleration threshold: %.2f", accelerationThreshold),
+                false
+        );
+        logEntry(
+                String.format("rotation acceleration threshold: %.2f", rotationThreshold),
+                false
+        );
+        logEntry(
+                String.format("low-pass threshold: %.2f", lowPassThreshold),
+                false
+        );
         return START_STICKY;
     }
 

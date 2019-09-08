@@ -27,4 +27,13 @@
     <EditTextPreference
         android:key="text_message"
         android:title="SMS message" />
+    <EditTextPreference
+        android:key="accelerometer_threshold"
+        android:title="Accelerometer threshold" />
+    <EditTextPreference
+        android:key="gyroscope_threshold"
+        android:title="Gyroscope threshold" />
+    <EditTextPreference
+        android:key="lowpass_threshold"
+        android:title="Lowpass threshold" />
 </PreferenceScreen>

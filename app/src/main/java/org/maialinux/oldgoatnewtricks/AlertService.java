@@ -62,6 +62,9 @@ public class AlertService extends Service {
     private static final String TRIGGER_SERVICE_KEY = "trigger service";
     private static final String POLLING_SERVICE_KEY = "polling service";
     public static final String INTERVAL_KEY = "interval";
+    public static final String ACCELEROMETER_THRESHOLD_KEY = "accelerometer_threshold";
+    public static final String GYROSCOPE_THRESHOLD_KEY = "gyroscope_threshold";
+    public static final String LOW_PASS_THRESHOLD_KEY = "low_pass_threshold";
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
@@ -82,6 +85,9 @@ public class AlertService extends Service {
     String message = DEFAULT_MESSAGE;
     int smsSent = 0;
     boolean sleeping = false;
+    double accelerometerThreshold;
+    double gyroscopeThreshold;
+    float lowPassThreshold;
 
 
     Intent broadCastIntent;
@@ -361,6 +367,24 @@ public class AlertService extends Service {
                 .withDate(now.getYear(), now.getMonthOfYear(), now.getDayOfMonth())
                 .withMillisOfDay(wakeUpTime.getMillisOfDay());
         /* We just have initialised the sleep and wake-up dates, so they are set at the same day */
+        accelerometerThreshold = getDouble(
+                sharedPreferences,
+                "accelerometer_threshold",
+                PollingAlertService.ACCELERATION_THRESHOLD,
+                TAG
+        );
+        gyroscopeThreshold = getDouble(
+                sharedPreferences,
+                "gyroscope_threshold",
+                PollingAlertService.ROTATION_THRESHOLD,
+                TAG
+        );
+        lowPassThreshold = getFloat(
+                sharedPreferences,
+                "lowpass_threshold",
+                PollingAlertService.ALPHA,
+                TAG
+        );
         calculateSleepInterval();
     }
 
@@ -419,6 +443,37 @@ public class AlertService extends Service {
         return value.trim();
     }
 
+    public static Double getDouble(SharedPreferences sharedPreferences, String preferenceKey, Double defaultValue, String tag) {
+        Double value = defaultValue;
+        try {
+            if (sharedPreferences.contains(preferenceKey)) {
+                String setting = sharedPreferences.getString(preferenceKey, "");
+                if (!setting.isEmpty()) {
+                    value = Double.parseDouble(setting);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(tag, e.getMessage());
+        }
+        return value;
+    }
+
+    public static Float getFloat(SharedPreferences sharedPreferences, String preferenceKey, Float defaultValue, String tag) {
+        Float value = defaultValue;
+        try {
+            if (sharedPreferences.contains(preferenceKey)) {
+                String setting = sharedPreferences.getString(preferenceKey, "");
+                if (!setting.isEmpty()) {
+                    value = Float.parseFloat(setting);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(tag, e.getMessage());
+        }
+        return value;
+    }
+
+
     private void sendSMS(String phoneNumber, String message) {
         if (!phoneNumber.isEmpty() && !message.isEmpty()) {
             SmsManager sms = SmsManager.getDefault();
@@ -439,6 +494,11 @@ public class AlertService extends Service {
                 String serviceName = entry.getKey();
                 Intent intent = entry.getValue();
                 intent.putExtra(INTERVAL_KEY, interval);
+                if (serviceName == POLLING_SERVICE_KEY) {
+                    intent.putExtra(ACCELEROMETER_THRESHOLD_KEY, accelerometerThreshold);
+                    intent.putExtra(GYROSCOPE_THRESHOLD_KEY, gyroscopeThreshold);
+                    intent.putExtra(LOW_PASS_THRESHOLD_KEY, lowPassThreshold);
+                }
                 if (intent != null) {
                     ComponentName name = startService(intent);
                     if (name != null) {
