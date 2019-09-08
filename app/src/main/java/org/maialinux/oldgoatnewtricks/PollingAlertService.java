@@ -38,7 +38,7 @@ public class PollingAlertService extends Service {
      */
     private static final long SLEEP_INTERVAL = 1*60*1000; //  1 minute between checks
     private static final long LISTENING_INTERVAL = 30*1000; // Listen for 30 seconds
-    private static final double ACCELERATION_THRESHOLD = 0.9f; // This much acceleration to trigger movement
+    private static final double ACCELERATION_THRESHOLD = 0.3f; // This much acceleration to trigger movement
     private static final double ROTATION_THRESHOLD = 0.5f; // This much rotational acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
     public static final int ORIENTATION_THRESHOLD = 10; // In degrees
@@ -50,7 +50,7 @@ public class PollingAlertService extends Service {
      * See: http://en.wikipedia.org/wiki/Low-pass_filter#Discrete-time_realization
      * From: http://blog.thomnichols.org/2011/08/smoothing-sensor-data-with-a-low-pass-filter
      */
-    private static final float ALPHA = 0.8f; // Threshold for low-pass filter
+    private static final float ALPHA = 0.2f; // Threshold for low-pass filter
 
 
     private static final String TAG = "PollingAlertService";
