@@ -65,6 +65,11 @@ public class AlertService extends Service {
     public static final String ACCELEROMETER_THRESHOLD_KEY = "accelerometer_threshold";
     public static final String GYROSCOPE_THRESHOLD_KEY = "gyroscope_threshold";
     public static final String LOW_PASS_THRESHOLD_KEY = "low_pass_threshold";
+    public static final String TRIGGER_ACCELEROMETER_KEY = "toggle_accelerometer";
+    public static final String TRIGGER_GYROSCOPE_KEY = "toggle_gyroscope";
+    public static final String TRIGGER_ORIENTATION_KEY = "toggle_orientation";
+    public static final String TRIGGER_PROXIMITY_KEY = "toggle_proximity";
+    public static final String TRIGGER_USER_ACTION = "toggle_user_action";
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
@@ -88,6 +93,12 @@ public class AlertService extends Service {
     double accelerometerThreshold;
     double gyroscopeThreshold;
     float lowPassThreshold;
+
+    boolean useGyroscope;
+    boolean useAccelerometer;
+    boolean useProximitySensor;
+    boolean usePhoneOrientation;
+    boolean useUserActions;
 
 
     Intent broadCastIntent;
@@ -273,7 +284,7 @@ public class AlertService extends Service {
                 Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
                 int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 /* We acquire the wakelock only if the phone is charging (e.g. plugged in) */
-                if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
+                if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
                     if (wakeLock.isHeld() == false) {
                         wakeLock.acquire();
                         logEntry("Acquiring wake-lock", true);
@@ -385,6 +396,36 @@ public class AlertService extends Service {
                 PollingAlertService.ALPHA,
                 TAG
         );
+        useAccelerometer = getBoolean(
+                sharedPreferences,
+                TRIGGER_ACCELEROMETER_KEY,
+                true,
+                TAG
+        );
+        useProximitySensor = getBoolean(
+                sharedPreferences,
+                TRIGGER_PROXIMITY_KEY,
+                true,
+                TAG
+        );
+        useUserActions = getBoolean(
+                sharedPreferences,
+                TRIGGER_USER_ACTION,
+                true,
+                TAG
+        );
+        useGyroscope = getBoolean(
+                sharedPreferences,
+                TRIGGER_GYROSCOPE_KEY,
+                true,
+                TAG
+        );
+        usePhoneOrientation = getBoolean(
+                sharedPreferences,
+                TRIGGER_ORIENTATION_KEY,
+                true,
+                TAG
+        );
         calculateSleepInterval();
     }
 
@@ -473,6 +514,18 @@ public class AlertService extends Service {
         return value;
     }
 
+    public static Boolean getBoolean(SharedPreferences sharedPreferences, String preferenceKey, Boolean defaultValue, String tag) {
+        Boolean value = defaultValue;
+        try {
+            if (sharedPreferences.contains(preferenceKey)) {
+                value = sharedPreferences.getBoolean(preferenceKey, defaultValue);
+            }
+        } catch (Exception e) {
+            Log.e(tag, e.getMessage());
+        }
+        return value;
+    }
+
 
     private void sendSMS(String phoneNumber, String message) {
         if (!phoneNumber.isEmpty() && !message.isEmpty()) {
@@ -487,7 +540,7 @@ public class AlertService extends Service {
     private void startServices() {
         createNotificationChannel();
         getServices();
-        if (! sleeping) {
+        if (!sleeping) {
             Iterator<Map.Entry<String, Intent>> iterator = runningServices.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Intent> entry = iterator.next();
@@ -498,6 +551,9 @@ public class AlertService extends Service {
                     intent.putExtra(ACCELEROMETER_THRESHOLD_KEY, accelerometerThreshold);
                     intent.putExtra(GYROSCOPE_THRESHOLD_KEY, gyroscopeThreshold);
                     intent.putExtra(LOW_PASS_THRESHOLD_KEY, lowPassThreshold);
+                    intent.putExtra(TRIGGER_ACCELEROMETER_KEY, useAccelerometer);
+                    intent.putExtra(TRIGGER_GYROSCOPE_KEY, useGyroscope);
+                    intent.putExtra(TRIGGER_ORIENTATION_KEY, usePhoneOrientation);
                 }
                 if (intent != null) {
                     ComponentName name = startService(intent);
@@ -514,11 +570,24 @@ public class AlertService extends Service {
 
     private void getServices() {
         servicesCount = 0;
-        if (runningServices.containsKey(TRIGGER_SERVICE_KEY) == false) {
+        if (
+                runningServices.containsKey(TRIGGER_SERVICE_KEY) == false &&
+                        (useProximitySensor == true || useUserActions == true)
+
+        ) {
             proximitySensorIntent = new Intent(this, TriggerAlertService.class);
+            proximitySensorIntent.putExtra(TRIGGER_PROXIMITY_KEY, useProximitySensor);
+            proximitySensorIntent.putExtra(TRIGGER_USER_ACTION, useUserActions);
             runningServices.put(TRIGGER_SERVICE_KEY, proximitySensorIntent);
         }
-        if (runningServices.containsKey(POLLING_SERVICE_KEY) == false) {
+        if (
+                runningServices.containsKey(POLLING_SERVICE_KEY) == false &&
+                        (
+                            useGyroscope == true ||
+                            useAccelerometer == true ||
+                            usePhoneOrientation == true
+                        )
+        ) {
             accelerometerSensorIntent = new Intent(this, PollingAlertService.class);
             runningServices.put(POLLING_SERVICE_KEY, accelerometerSensorIntent);
         }
@@ -604,7 +673,7 @@ public class AlertService extends Service {
     }
 
     private void resetTimer(long interval) {
-        if (! sleeping) {
+        if (!sleeping) {
             logEntry("Reset timer", false);
             logEntry(String.format("Interval: %d seconds", interval / 1000), false);
             expirationTime = System.currentTimeMillis() + interval; // Reset the expiration time

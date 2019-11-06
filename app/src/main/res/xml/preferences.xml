@@ -36,4 +36,24 @@
     <EditTextPreference
         android:key="lowpass_threshold"
         android:title="Lowpass threshold" />
+    <CheckBoxPreference
+        android:key="toggle_accelerometer"
+        android:title="Tigger on accelerometer"
+        android:defaultValue="true"/>
+    <CheckBoxPreference
+        android:key="toggle_gyroscope"
+        android:title="Trigger on gyroscope"
+        android:defaultValue="true"/>
+    <CheckBoxPreference
+        android:key="toggle_proximity"
+        android:title="Trigger on proximity"
+        android:defaultValue="true"/>
+    <CheckBoxPreference
+        android:key="toggle_user_action"
+        android:title="Trigger on user actions"
+        android:defaultValue="true"/>
+    <CheckBoxPreference
+        android:key="toggle_orientation"
+        android:title="Trigger on orientation changes"
+        android:defaultValue="true"/>
 </PreferenceScreen>

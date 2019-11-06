@@ -36,8 +36,8 @@ public class PollingAlertService extends Service {
         to detect movement while carrying the phone around.
         Remember this is about detecting when I am inactive over a long period, presumed dead.
      */
-    private static final long SLEEP_INTERVAL = 1*60*1000; //  1 minute between checks
-    private static final long LISTENING_INTERVAL = 30*1000; // Listen for 30 seconds
+    private static final long SLEEP_INTERVAL = 1 * 60 * 1000; //  1 minute between checks
+    private static final long LISTENING_INTERVAL = 30 * 1000; // Listen for 30 seconds
     public static final double ACCELERATION_THRESHOLD = 0.8f; // This much linear acceleration to trigger movement
     public static final double ROTATION_THRESHOLD = 0.8f; // This much rotational acceleration to trigger movement
     private static final double GEOMAGNETIC_THRESHOLD = 10.0f; // This much change on any axis to trigger rest
@@ -68,19 +68,24 @@ public class PollingAlertService extends Service {
     private double accelerationThreshold = ACCELERATION_THRESHOLD;
     private double rotationThreshold = ROTATION_THRESHOLD;
     private float lowPassThreshold = ALPHA;
+    private boolean useGyroscope = false;
+    private boolean useAccelerometer = false;
+    private boolean usePhoneOrientation = false;
 
     Handler accelHandler = new Handler();
     Runnable accelRunnable = new Runnable() {
         @Override
         public void run() {
-
             long delay = SLEEP_INTERVAL;
             if (reset == true) {
-                delay = interval/2;
+                delay = interval / 10;
+                if (delay < (SLEEP_INTERVAL*5)) {
+                    delay = SLEEP_INTERVAL * 5;
+                }
                 reset = false;
-                logEntry(String.format("Sensor service sleeping for %d seconds after reset", delay/1000), false);
+                logEntry(String.format("Sensor service sleeping for %d seconds after reset", delay / 1000), false);
             } else {
-            if (sensorRunning == true) {
+                if (sensorRunning == true) {
                     stopListening();
                 } else {
                     startListening();
@@ -118,6 +123,7 @@ public class PollingAlertService extends Service {
         orientationEventListener = new OrientationEventListener(getApplicationContext(), SensorManager.SENSOR_DELAY_NORMAL) {
             @Override
             public void onOrientationChanged(int i) {
+
                 boolean reset = false;
                 // Values go from -1 to 360
                 // -1 means it doesn't know
@@ -151,7 +157,9 @@ public class PollingAlertService extends Service {
                     }
                     orientation = i;
                     if (reset == true) {
-                        sendResetBroadcast();
+                        if (usePhoneOrientation == true) {
+                            sendResetBroadcast();
+                        }
                     }
                 }
             }
@@ -196,7 +204,6 @@ public class PollingAlertService extends Service {
     };
 
 
-
     private final SensorEventListener accelerometerEventListener = new SensorEventListener() {
 
 
@@ -209,6 +216,7 @@ public class PollingAlertService extends Service {
          * @see https://www.built.io/blog/applying-low-pass-filter-to-android-sensor-s-readings
          */
         public void onSensorChanged(SensorEvent event) {
+
             if (reset == false) {
                 float x = event.values[0];
                 float y = event.values[1];
@@ -220,8 +228,12 @@ public class PollingAlertService extends Service {
                 Log.d(TAG, String.format("acceleration: %f", acceleration));
                 if (acceleration >= accelerationThreshold) {
                     logEntry("Accelerometer sensor triggered", true);
-                    reset = true;
-                    sendResetBroadcast();
+                    if (useAccelerometer == true) {
+                        reset = true;
+                        sendResetBroadcast();
+                    } else {
+                        logEntry("Accelerometer sensor is disabled", false);
+                    }
                 }
             }
         }
@@ -235,18 +247,24 @@ public class PollingAlertService extends Service {
     private final SensorEventListener gyroscopeEventListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
+
             if (reset == false) {
                 float x = event.values[0];
                 float y = event.values[1];
                 float z = event.values[2];
-                float omegaMagnitude = (float) Math.sqrt((double) (x*x + y*y + z*z));
+                float omegaMagnitude = (float) Math.sqrt((double) (x * x + y * y + z * z));
                 Log.d(TAG, String.format("axis rotation acceleration: %f", omegaMagnitude));
                 if (omegaMagnitude >= rotationThreshold) {
-                    logEntry("Gyroscope sensor triggered", true);
-                    reset = true;
-                    sendResetBroadcast();
-                }
 
+                    logEntry("Gyroscope sensor triggered", true);
+                    if (useGyroscope == true) {
+                        reset = true;
+                        sendResetBroadcast();
+                    } else {
+                        logEntry("Gyroscope sensor is disabled", false);
+                    }
+
+                }
             }
         }
 
@@ -257,7 +275,6 @@ public class PollingAlertService extends Service {
     };
 
 
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
@@ -265,6 +282,10 @@ public class PollingAlertService extends Service {
             accelerationThreshold = intent.getDoubleExtra(AlertService.ACCELEROMETER_THRESHOLD_KEY, ACCELERATION_THRESHOLD);
             rotationThreshold = intent.getDoubleExtra(AlertService.GYROSCOPE_THRESHOLD_KEY, ROTATION_THRESHOLD);
             lowPassThreshold = intent.getFloatExtra(AlertService.LOW_PASS_THRESHOLD_KEY, ALPHA);
+            useAccelerometer = intent.getBooleanExtra(AlertService.TRIGGER_ACCELEROMETER_KEY, true);
+            useGyroscope = intent.getBooleanExtra(AlertService.TRIGGER_GYROSCOPE_KEY, true);
+            usePhoneOrientation = intent.getBooleanExtra(AlertService.TRIGGER_ORIENTATION_KEY, true);
+
         }
         logEntry(
                 String.format("linear acceleration threshold: %.2f", accelerationThreshold),
@@ -278,6 +299,19 @@ public class PollingAlertService extends Service {
                 String.format("low-pass threshold: %.2f", lowPassThreshold),
                 false
         );
+        logEntry(
+                String.format("Accelerometer toggle: %s", Boolean.toString(useAccelerometer)),
+                false
+        );
+        logEntry(
+                String.format("Gyroscope toggle: %s", Boolean.toString(useGyroscope)),
+                false
+        );
+        logEntry(
+                String.format("Orientation toggle: %s", Boolean.toString(usePhoneOrientation)),
+                false
+        );
+
         return START_STICKY;
     }
 
@@ -299,17 +333,17 @@ public class PollingAlertService extends Service {
             lastAcceleration = SensorManager.GRAVITY_EARTH;
             sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
-            for (int i=0; i <sensorList.size(); i++) {
+            for (int i = 0; i < sensorList.size(); i++) {
                 //Log.d(TAG, sensorList.get(i).getName());
                 int sensorType = sensorList.get(i).getType();
-                switch(sensorType) {
+                switch (sensorType) {
                     case Sensor.TYPE_ACCELEROMETER:
                     case Sensor.TYPE_ACCELEROMETER_UNCALIBRATED:
                         sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
                         sensorRunning = true;
                         break;
                     case Sensor.TYPE_MAGNETIC_FIELD:
-                    //case Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+                        //case Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED:
                         sensorManager.registerListener(geoMagneticEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
                         sensorRunning = true;
                         break;
@@ -329,6 +363,7 @@ public class PollingAlertService extends Service {
                 Log.w(TAG, "Cannot detect orientation; disabling");
                 orientationEventListener.disable();
             }
+
 
             //sensorManager.registerListener(accelerometerEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
             //sensorManager.registerListener(getMagneticEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD), SensorManager.SENSOR_DELAY_NORMAL, 2000000000);
@@ -361,9 +396,6 @@ public class PollingAlertService extends Service {
         broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
         sendBroadcast(broadCastIntent);
     }
-
-
-
 
 
 }
