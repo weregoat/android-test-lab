@@ -36,7 +36,7 @@ public class TriggerAlertService extends Service {
                             )
                     );
                 } else {
-                    Log.d(TAG,
+                    AlertService.LogD(TAG,
                             String.format(
                                     "Proximity trigger is %s",
                                     Boolean.toString(triggerOnProximitySensor)
@@ -56,7 +56,7 @@ public class TriggerAlertService extends Service {
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
         for (int i = 0; i < sensorList.size(); i++) {
-            Log.d(TAG, sensorList.get(i).getName());
+            AlertService.LogD(TAG, sensorList.get(i).getName());
             int sensorType = sensorList.get(i).getType();
             if (sensorType == Sensor.TYPE_PROXIMITY) {
                 sensorManager.registerListener(proximityEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL);
@@ -106,13 +106,13 @@ public class TriggerAlertService extends Service {
             if (triggerOnUserActions == true) {
                 sendResetBroadcast(String.format("Received system broadcast for action: %s", intent.getAction()));
             } else {
-                Log.d(TAG, String.format("System broadcast for action %s ignored as trigger on user actions is %s", intent.getAction(), Boolean.toString(triggerOnUserActions)));
+                AlertService.LogD(TAG, String.format("System broadcast for action %s ignored as trigger on user actions is %s", intent.getAction(), Boolean.toString(triggerOnUserActions)));
             }
         }
     }
 
     private void sendResetBroadcast(String logMessage) {
-        Log.d(TAG, logMessage);
+        AlertService.LogD(TAG, logMessage);
         Intent broadCastIntent = new Intent(AlertService.BROADCAST_ACTION);
         broadCastIntent.putExtra(AlertService.RESET_MESSAGE, true);
         sendBroadcast(broadCastIntent);

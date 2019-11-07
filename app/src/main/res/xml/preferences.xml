@@ -56,4 +56,9 @@
         android:key="toggle_orientation"
         android:title="Trigger on orientation changes"
         android:defaultValue="true"/>
+    <CheckBoxPreference
+        android:key="debug"
+        android:title="Writes debug messages to Logcat"
+        android:defaultValue="false"/>
+        />
 </PreferenceScreen>

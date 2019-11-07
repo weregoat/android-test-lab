@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -38,6 +39,7 @@ import org.joda.time.format.ISODateTimeFormat;
 import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
+import java.text.NumberFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -73,6 +75,7 @@ public class AlertService extends Service {
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
+    public static Boolean debug = false;
 
 
     //private final IBinder mBinder = new LocalBinder();
@@ -99,6 +102,7 @@ public class AlertService extends Service {
     boolean useProximitySensor;
     boolean usePhoneOrientation;
     boolean useUserActions;
+
 
 
     Intent broadCastIntent;
@@ -232,7 +236,6 @@ public class AlertService extends Service {
         powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
 
-
         startServices();
     }
 
@@ -245,7 +248,7 @@ public class AlertService extends Service {
     }
 
     private void logEntry(String message, boolean updateNotification) {
-        Log.d(TAG, message);
+        LogD(TAG, message);
         broadCastIntent.putExtra("message", message);
         sendBroadcast(broadCastIntent);
         if (updateNotification == true) {
@@ -377,7 +380,13 @@ public class AlertService extends Service {
         wakeUpDateTime = new DateTime()
                 .withDate(now.getYear(), now.getMonthOfYear(), now.getDayOfMonth())
                 .withMillisOfDay(wakeUpTime.getMillisOfDay());
-        /* We just have initialised the sleep and wake-up dates, so they are set at the same day */
+        /* We just have initialised the sleep and wake-up dates above, so they are set at the same day */
+        debug = getBoolean(
+                sharedPreferences,
+                "debug",
+                false,
+                TAG
+        );
         accelerometerThreshold = getDouble(
                 sharedPreferences,
                 "accelerometer_threshold",
@@ -426,6 +435,7 @@ public class AlertService extends Service {
                 true,
                 TAG
         );
+
         calculateSleepInterval();
     }
 
@@ -490,7 +500,8 @@ public class AlertService extends Service {
             if (sharedPreferences.contains(preferenceKey)) {
                 String setting = sharedPreferences.getString(preferenceKey, "");
                 if (!setting.isEmpty()) {
-                    value = Double.parseDouble(setting);
+                    value = NumberFormat.getInstance().parse(setting).doubleValue();
+                    LogD(tag, String.format("Configuration string %s converted to Double %.3f", setting , value));
                 }
             }
         } catch (Exception e) {
@@ -505,7 +516,8 @@ public class AlertService extends Service {
             if (sharedPreferences.contains(preferenceKey)) {
                 String setting = sharedPreferences.getString(preferenceKey, "");
                 if (!setting.isEmpty()) {
-                    value = Float.parseFloat(setting);
+                    value = NumberFormat.getInstance().parse(setting).floatValue();
+                    LogD(tag, String.format("Configuration string %s converted to Float %.3f", setting , value));
                 }
             }
         } catch (Exception e) {
@@ -524,6 +536,12 @@ public class AlertService extends Service {
             Log.e(tag, e.getMessage());
         }
         return value;
+    }
+
+    public static void LogD(String tag, String message) {
+        if (debug == true) {
+            Log.d(tag, message);
+        }
     }
 
 
@@ -558,7 +576,7 @@ public class AlertService extends Service {
                 if (intent != null) {
                     ComponentName name = startService(intent);
                     if (name != null) {
-                        Log.d(TAG, String.format("%s service started", serviceName));
+                        LogD(TAG, String.format("%s service started", serviceName));
                         servicesCount++;
                     }
                 }
@@ -603,7 +621,7 @@ public class AlertService extends Service {
             Intent intent = entry.getValue();
             if (intent != null) {
                 if (stopService(intent) == true) {
-                    Log.d(TAG, String.format("%s service stopped", serviceName));
+                    LogD(TAG, String.format("%s service stopped", serviceName));
                 } else {
                     Log.w(TAG, String.format("failed to stop %s service", serviceName));
                 }
@@ -729,6 +747,8 @@ public class AlertService extends Service {
         return days;
 
     }
+
+
 
 
 }

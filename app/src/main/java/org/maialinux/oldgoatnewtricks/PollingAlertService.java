@@ -79,8 +79,8 @@ public class PollingAlertService extends Service {
             long delay = SLEEP_INTERVAL;
             if (reset == true) {
                 delay = interval / 10;
-                if (delay < (SLEEP_INTERVAL*5)) {
-                    delay = SLEEP_INTERVAL * 5;
+                if (delay < (SLEEP_INTERVAL * 10)) {
+                    delay = SLEEP_INTERVAL * 10;
                 }
                 reset = false;
                 logEntry(String.format("Sensor service sleeping for %d seconds after reset", delay / 1000), false);
@@ -102,7 +102,7 @@ public class PollingAlertService extends Service {
         public void onReceive(Context context, Intent intent) {
             boolean resetMessage = intent.getBooleanExtra(AlertService.RESET_MESSAGE, false);
             if (resetMessage == true) {
-                Log.d(TAG, "Received reset broadcast");
+                AlertService.LogD(TAG, "Received reset broadcast");
                 reset = true;
                 stopListening();
                 accelHandler.removeCallbacks(accelRunnable);
@@ -130,7 +130,7 @@ public class PollingAlertService extends Service {
                 // Although the very method should be only called when there is a change in
                 // orientation, I prefer to re-iterate it my own way, to provide some insulation
                 // from the Android implementation.
-                if (i != orientation) { // If the orientation value has changed.
+                if (i != orientation && usePhoneOrientation == true) { // If the orientation value has changed.
                     /*
                         I can imagine a few scenarios I need to act upon:
                         - phone was lying and it got picked up
@@ -157,9 +157,7 @@ public class PollingAlertService extends Service {
                     }
                     orientation = i;
                     if (reset == true) {
-                        if (usePhoneOrientation == true) {
                             sendResetBroadcast();
-                        }
                     }
                 }
             }
@@ -217,7 +215,7 @@ public class PollingAlertService extends Service {
          */
         public void onSensorChanged(SensorEvent event) {
 
-            if (reset == false) {
+            if (reset == false && useAccelerometer == true) {
                 float x = event.values[0];
                 float y = event.values[1];
                 float z = event.values[2];
@@ -225,15 +223,11 @@ public class PollingAlertService extends Service {
                 currentAcceleration = (float) Math.sqrt((double) (x * x + y * y + z * z)); // I don't care about specific axis
                 float delta = currentAcceleration - lastAcceleration;
                 acceleration = Math.abs(acceleration * lowPassThreshold + delta); // Low-pass filter removing the high frequency noise
-                Log.d(TAG, String.format("acceleration: %f", acceleration));
+                AlertService.LogD(TAG, String.format("acceleration: %f", acceleration));
                 if (acceleration >= accelerationThreshold) {
                     logEntry("Accelerometer sensor triggered", true);
-                    if (useAccelerometer == true) {
-                        reset = true;
-                        sendResetBroadcast();
-                    } else {
-                        logEntry("Accelerometer sensor is disabled", false);
-                    }
+                    reset = true;
+                    sendResetBroadcast();
                 }
             }
         }
@@ -248,21 +242,16 @@ public class PollingAlertService extends Service {
         @Override
         public void onSensorChanged(SensorEvent event) {
 
-            if (reset == false) {
+            if (reset == false && useGyroscope == true) {
                 float x = event.values[0];
                 float y = event.values[1];
                 float z = event.values[2];
                 float omegaMagnitude = (float) Math.sqrt((double) (x * x + y * y + z * z));
-                Log.d(TAG, String.format("axis rotation acceleration: %f", omegaMagnitude));
+                AlertService.LogD(TAG, String.format("axis rotation acceleration: %f", omegaMagnitude));
                 if (omegaMagnitude >= rotationThreshold) {
-
                     logEntry("Gyroscope sensor triggered", true);
-                    if (useGyroscope == true) {
-                        reset = true;
-                        sendResetBroadcast();
-                    } else {
-                        logEntry("Gyroscope sensor is disabled", false);
-                    }
+                    reset = true;
+                    sendResetBroadcast();
 
                 }
             }
@@ -327,14 +316,14 @@ public class PollingAlertService extends Service {
 
     private void startListening() {
         if (sensorRunning == false) {
-            logEntry("Start listening to sensors", false);
+            AlertService.LogD(TAG, "Start listening to sensors");
             acceleration = 0.0f;
             currentAcceleration = SensorManager.GRAVITY_EARTH;
             lastAcceleration = SensorManager.GRAVITY_EARTH;
             sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
             for (int i = 0; i < sensorList.size(); i++) {
-                //Log.d(TAG, sensorList.get(i).getName());
+                //AlertService.LogD(TAG, sensorList.get(i).getName());
                 int sensorType = sensorList.get(i).getType();
                 switch (sensorType) {
                     case Sensor.TYPE_ACCELEROMETER:
@@ -356,7 +345,7 @@ public class PollingAlertService extends Service {
             }
             /* Start listening to orientation change, if possible */
             if (orientationEventListener.canDetectOrientation() == true) {
-                Log.d(TAG, "Enabling orientation detection");
+                AlertService.LogD(TAG, "Enabling orientation detection");
                 orientationEventListener.enable();
                 sensorRunning = true;
             } else {
@@ -373,7 +362,7 @@ public class PollingAlertService extends Service {
 
     private void stopListening() {
         if (sensorRunning == true) {
-            logEntry("Stop listening to sensors", false);
+            AlertService.LogD(TAG, "Stop listening to sensors");
             sensorManager.unregisterListener(accelerometerEventListener);
             sensorManager.unregisterListener(geoMagneticEventListener);
             sensorManager.unregisterListener(gyroscopeEventListener);
@@ -386,7 +375,7 @@ public class PollingAlertService extends Service {
         if (toast) {
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
         }
-        Log.d(TAG, message);
+        AlertService.LogD(TAG, message);
         Intent logIntent = new Intent(AlertService.BROADCAST_ACTION);
         logIntent.putExtra("message", message);
         sendBroadcast(logIntent);
