@@ -34,7 +34,7 @@ public class AlarmService extends Service {
 
     @Override
     public void onCreate() {
-        Log.d(TAG, "Alarm Job created");
+        AlertService.LogD(TAG, "Alarm Job created");
         super.onCreate();
         Uri ringtoneURI = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
         ringtone = RingtoneManager.getRingtone(getBaseContext(), ringtoneURI);
@@ -49,7 +49,7 @@ public class AlarmService extends Service {
 
     @Override
     public void onDestroy() {
-        Log.d(TAG, "Alarm job destroyed");
+        AlertService.LogD(TAG, "Alarm job destroyed");
         super.onDestroy();
         unregisterReceiver(broadcastReceiver);
         ringtone.stop();
@@ -58,7 +58,7 @@ public class AlarmService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId)
     {
-        Log.d(TAG, "Alarm job started");
+        AlertService.LogD(TAG, "Alarm job started");
         ringtone.play();
         mHandler.postDelayed(new Runnable() {
             @Override
