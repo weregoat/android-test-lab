@@ -264,7 +264,7 @@ public class AlertService extends Service {
             if (sleepInterval.containsNow() || sleepInterval.contains(new DateTime(expirationTime))) {
                 logEntry("Going to sleep", false);
                 sleep = true;
-                if (wakeLock.isHeld()) {
+                    if (wakeLock.isHeld()) {
                     wakeLock.release();
                 }
                 Period sleepPeriod = new Period(new DateTime(), sleepInterval.getEnd());
@@ -287,7 +287,7 @@ public class AlertService extends Service {
                 Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
                 int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 /* We acquire the wakelock only if the phone is charging (e.g. plugged in) */
-                if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
+                 if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
                     if (wakeLock.isHeld() == false) {
                         wakeLock.acquire();
                         logEntry("Acquiring wake-lock", true);
