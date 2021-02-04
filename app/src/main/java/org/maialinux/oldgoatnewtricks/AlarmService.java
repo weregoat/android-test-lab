@@ -27,11 +27,6 @@ public class AlarmService extends Service {
     private Ringtone ringtone;
     Handler mHandler = new Handler();
 
-
-
-
-
-
     @Override
     public void onCreate() {
         AlertService.LogD(TAG, "Alarm Job created");

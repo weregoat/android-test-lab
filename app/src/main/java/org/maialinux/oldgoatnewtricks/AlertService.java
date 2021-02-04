@@ -13,6 +13,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.media.AudioAttributes;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -62,16 +63,10 @@ public class AlertService extends Service {
     private static final long DELAY = 10 * 60000; // default delay as ten minutes
     public static final long MAX_DELAY = 3600000;
     private static final String TRIGGER_SERVICE_KEY = "trigger service";
-    private static final String POLLING_SERVICE_KEY = "polling service";
     public static final String INTERVAL_KEY = "interval";
-    public static final String ACCELEROMETER_THRESHOLD_KEY = "accelerometer_threshold";
-    public static final String GYROSCOPE_THRESHOLD_KEY = "gyroscope_threshold";
-    public static final String LOW_PASS_THRESHOLD_KEY = "low_pass_threshold";
-    public static final String TRIGGER_ACCELEROMETER_KEY = "toggle_accelerometer";
-    public static final String TRIGGER_GYROSCOPE_KEY = "toggle_gyroscope";
-    public static final String TRIGGER_ORIENTATION_KEY = "toggle_orientation";
     public static final String TRIGGER_PROXIMITY_KEY = "toggle_proximity";
     public static final String TRIGGER_USER_ACTION = "toggle_user_action";
+    public static final String TRIGGER_SIGNIFICANT_MOTION_KEY = "toggle_significant_motion";
     public static final String DEFAULT_MESSAGE = "Dead-man switch alert triggered";
     public static final int MAX_SMS = 3;
     public static final String CHANNEL_ID = "GOATCHANNEL";
@@ -100,14 +95,13 @@ public class AlertService extends Service {
     boolean useGyroscope;
     boolean useAccelerometer;
     boolean useProximitySensor;
-    boolean usePhoneOrientation;
     boolean useUserActions;
+    boolean useSignificantMotion;
 
 
 
     Intent broadCastIntent;
-    Intent accelerometerSensorIntent;
-    Intent proximitySensorIntent;
+    Intent triggersIntent;
     Intent resetIntent;
     Intent alarmIntent;
 
@@ -387,31 +381,7 @@ public class AlertService extends Service {
                 false,
                 TAG
         );
-        accelerometerThreshold = getDouble(
-                sharedPreferences,
-                "accelerometer_threshold",
-                PollingAlertService.ACCELERATION_THRESHOLD,
-                TAG
-        );
-        gyroscopeThreshold = getDouble(
-                sharedPreferences,
-                "gyroscope_threshold",
-                PollingAlertService.ROTATION_THRESHOLD,
-                TAG
-        );
-        lowPassThreshold = getFloat(
-                sharedPreferences,
-                "lowpass_threshold",
-                PollingAlertService.ALPHA,
-                TAG
-        );
-        useAccelerometer = getBoolean(
-                sharedPreferences,
-                TRIGGER_ACCELEROMETER_KEY,
-                true,
-                TAG
-        );
-        useProximitySensor = getBoolean(
+         useProximitySensor = getBoolean(
                 sharedPreferences,
                 TRIGGER_PROXIMITY_KEY,
                 true,
@@ -423,15 +393,9 @@ public class AlertService extends Service {
                 true,
                 TAG
         );
-        useGyroscope = getBoolean(
+        useSignificantMotion = getBoolean(
                 sharedPreferences,
-                TRIGGER_GYROSCOPE_KEY,
-                true,
-                TAG
-        );
-        usePhoneOrientation = getBoolean(
-                sharedPreferences,
-                TRIGGER_ORIENTATION_KEY,
+                TRIGGER_SIGNIFICANT_MOTION_KEY,
                 true,
                 TAG
         );
@@ -565,14 +529,6 @@ public class AlertService extends Service {
                 String serviceName = entry.getKey();
                 Intent intent = entry.getValue();
                 intent.putExtra(INTERVAL_KEY, interval);
-                if (serviceName == POLLING_SERVICE_KEY) {
-                    intent.putExtra(ACCELEROMETER_THRESHOLD_KEY, accelerometerThreshold);
-                    intent.putExtra(GYROSCOPE_THRESHOLD_KEY, gyroscopeThreshold);
-                    intent.putExtra(LOW_PASS_THRESHOLD_KEY, lowPassThreshold);
-                    intent.putExtra(TRIGGER_ACCELEROMETER_KEY, useAccelerometer);
-                    intent.putExtra(TRIGGER_GYROSCOPE_KEY, useGyroscope);
-                    intent.putExtra(TRIGGER_ORIENTATION_KEY, usePhoneOrientation);
-                }
                 if (intent != null) {
                     ComponentName name = startService(intent);
                     if (name != null) {
@@ -590,24 +546,14 @@ public class AlertService extends Service {
         servicesCount = 0;
         if (
                 runningServices.containsKey(TRIGGER_SERVICE_KEY) == false &&
-                        (useProximitySensor == true || useUserActions == true)
+                        (useProximitySensor == true || useUserActions == true || useSignificantMotion == true)
 
         ) {
-            proximitySensorIntent = new Intent(this, TriggerAlertService.class);
-            proximitySensorIntent.putExtra(TRIGGER_PROXIMITY_KEY, useProximitySensor);
-            proximitySensorIntent.putExtra(TRIGGER_USER_ACTION, useUserActions);
-            runningServices.put(TRIGGER_SERVICE_KEY, proximitySensorIntent);
-        }
-        if (
-                runningServices.containsKey(POLLING_SERVICE_KEY) == false &&
-                        (
-                            useGyroscope == true ||
-                            useAccelerometer == true ||
-                            usePhoneOrientation == true
-                        )
-        ) {
-            accelerometerSensorIntent = new Intent(this, PollingAlertService.class);
-            runningServices.put(POLLING_SERVICE_KEY, accelerometerSensorIntent);
+            triggersIntent = new Intent(this, TriggerAlertService.class);
+            triggersIntent.putExtra(TRIGGER_PROXIMITY_KEY, useProximitySensor);
+            triggersIntent.putExtra(TRIGGER_USER_ACTION, useUserActions);
+            triggersIntent.putExtra(TRIGGER_SIGNIFICANT_MOTION_KEY, useSignificantMotion);
+            runningServices.put(TRIGGER_SERVICE_KEY, triggersIntent);
         }
     }
 
@@ -727,10 +673,11 @@ public class AlertService extends Service {
             int importance = NotificationManager.IMPORTANCE_DEFAULT;
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
             channel.setDescription(description);
-            channel.setSound(null, null);
             channel.enableLights(false);
             channel.enableVibration(false);
             channel.setImportance(NotificationManager.IMPORTANCE_LOW);
+            channel.setSound(null,     new AudioAttributes.Builder().setUsage(
+                    AudioAttributes.USAGE_ALARM).build());
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
             NotificationManager notificationManager = getSystemService(NotificationManager.class);

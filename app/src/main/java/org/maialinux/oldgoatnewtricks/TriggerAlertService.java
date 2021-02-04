@@ -1,4 +1,4 @@
-package org.maialinux.oldgoatnewtricks;
+    package org.maialinux.oldgoatnewtricks;
 
 import android.app.Service;
 import android.content.BroadcastReceiver;
@@ -9,6 +9,8 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.TriggerEvent;
+import android.hardware.TriggerEventListener;
 import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.util.Log;
@@ -19,10 +21,12 @@ public class TriggerAlertService extends Service {
 
     private boolean triggerOnUserActions;
     private boolean triggerOnProximitySensor;
+    private boolean triggerOnSignificantMotion = true;
 
     private static String TAG = TriggerAlertService.class.getSimpleName();
     private SensorManager sensorManager;
     private BroadcastReceiver br = new SystemBroadcastReceiver();
+
     private final SensorEventListener proximityEventListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
@@ -36,17 +40,24 @@ public class TriggerAlertService extends Service {
                             )
                     );
                 } else {
-                    AlertService.LogD(TAG,
-                            String.format(
-                                    "Proximity trigger is %s",
-                                    Boolean.toString(triggerOnProximitySensor)
-                            ));
+                    AlertService.LogD(TAG, "Proximity trigger is disabled");
                 }
             }
         }
 
         @Override
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
+
+    private final TriggerEventListener significantMotionEventListener = new TriggerEventListener() {
+        @Override
+        public void onTrigger(TriggerEvent event) {
+            if (triggerOnSignificantMotion == true) {
+                sendResetBroadcast("Significant motion triggered");
+            } else {
+                AlertService.LogD(TAG,"Significant motion trigger is disabled");
+            }
         }
     };
 
@@ -57,17 +68,22 @@ public class TriggerAlertService extends Service {
         List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
         for (int i = 0; i < sensorList.size(); i++) {
             AlertService.LogD(TAG, sensorList.get(i).getName());
-            int sensorType = sensorList.get(i).getType();
+            Sensor sensor = sensorList.get(i);
+            int sensorType = sensor.getType();
+
             if (sensorType == Sensor.TYPE_PROXIMITY) {
                 sensorManager.registerListener(proximityEventListener, sensorManager.getDefaultSensor(sensorType), SensorManager.SENSOR_DELAY_NORMAL);
-                break;
+            }
+            if (sensorType == Sensor.TYPE_SIGNIFICANT_MOTION) {
+                AlertService.LogD(TAG, "Significant motion");
+                sensorManager.requestTriggerSensor(significantMotionEventListener, sensor);
             }
         }
 
         IntentFilter filter = new IntentFilter();
         /* List of possible action that may be read as activity from the user */
-        filter.addAction(Intent.ACTION_SCREEN_ON);
-        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        // filter.addAction(Intent.ACTION_SCREEN_ON);
+        //filter.addAction(Intent.ACTION_SCREEN_OFF);
         filter.addAction(Intent.ACTION_ANSWER);
         filter.addAction(Intent.ACTION_POWER_CONNECTED);
         filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
@@ -80,6 +96,7 @@ public class TriggerAlertService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         triggerOnProximitySensor = intent.getBooleanExtra(AlertService.TRIGGER_PROXIMITY_KEY, true);
         triggerOnUserActions = intent.getBooleanExtra(AlertService.TRIGGER_USER_ACTION, true);
+        triggerOnSignificantMotion = intent.getBooleanExtra(AlertService.TRIGGER_SIGNIFICANT_MOTION_KEY, true);
         return START_STICKY;
     }
 
