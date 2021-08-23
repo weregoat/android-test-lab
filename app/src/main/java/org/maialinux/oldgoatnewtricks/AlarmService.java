@@ -2,22 +2,16 @@ package org.maialinux.oldgoatnewtricks;
 
 
 import android.app.Service;
-import android.app.job.JobParameters;
-import android.app.job.JobService;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
-import android.os.PowerManager;
-import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
-import android.util.Log;
 
 
 public class AlarmService extends Service {
@@ -51,8 +45,8 @@ public class AlarmService extends Service {
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId)
-    {
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        ringtone = RingtoneManager.getRingtone(getBaseContext(), Uri.parse(intent.getStringExtra("ringtoneURI")));
         AlertService.LogD(TAG, "Alarm job started");
         ringtone.play();
         mHandler.postDelayed(new Runnable() {

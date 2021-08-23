@@ -12,9 +12,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
-import android.media.AudioAttributes;
-import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.BatteryManager;
@@ -41,7 +38,6 @@ import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
 import java.text.NumberFormat;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
@@ -75,7 +71,7 @@ public class AlertService extends Service {
 
     //private final IBinder mBinder = new LocalBinder();
     private final String TAG = "OGNT:AlertService";
-    Ringtone ringtone;
+    Uri ringtoneURI;
     long expirationTime;
     int alertCounts = 0;
     long sleepDelay;
@@ -88,17 +84,9 @@ public class AlertService extends Service {
     String message = DEFAULT_MESSAGE;
     int smsSent = 0;
     boolean sleeping = false;
-    double accelerometerThreshold;
-    double gyroscopeThreshold;
-    float lowPassThreshold;
-
-    boolean useGyroscope;
-    boolean useAccelerometer;
     boolean useProximitySensor;
     boolean useUserActions;
     boolean useSignificantMotion;
-
-
 
     Intent broadCastIntent;
     Intent triggersIntent;
@@ -196,12 +184,8 @@ public class AlertService extends Service {
         registerReceiver(broadcastReceiver, new IntentFilter(BROADCAST_ACTION));
         reloadConfig();
         alertCounts = 0;
-        Uri ringtoneURI = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-        ringtone = RingtoneManager.getRingtone(getBaseContext(), ringtoneURI);
         expirationTime = System.currentTimeMillis() + interval;
 
-
-        alarmIntent = new Intent(this, AlarmService.class);
         DateTimeFormatter formatter = ISODateTimeFormat.dateTimeNoMillis();
         logEntry(String.format("Application will be sleeping from %s to %s", formatter.print(sleepDateTime.toLocalDateTime()), formatter.print(wakeUpDateTime.toLocalDateTime())), false);
         resetIntent = new Intent(AlertService.BROADCAST_ACTION);
@@ -227,6 +211,7 @@ public class AlertService extends Service {
         startForeground(99, notification);
         logEntry(String.format("Interval: %d", interval / 1000), false);
         alarmIntent = new Intent(this, AlarmService.class);
+        alarmIntent.putExtra("ringtoneURI", ringtoneURI.toString());
         powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
 
@@ -258,7 +243,7 @@ public class AlertService extends Service {
             if (sleepInterval.containsNow() || sleepInterval.contains(new DateTime(expirationTime))) {
                 logEntry("Going to sleep", false);
                 sleep = true;
-                    if (wakeLock.isHeld()) {
+                if (wakeLock.isHeld()) {
                     wakeLock.release();
                 }
                 Period sleepPeriod = new Period(new DateTime(), sleepInterval.getEnd());
@@ -281,7 +266,7 @@ public class AlertService extends Service {
                 Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
                 int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 /* We acquire the wakelock only if the phone is charging (e.g. plugged in) */
-                 if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
+                if (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL) {
                     if (wakeLock.isHeld() == false) {
                         wakeLock.acquire();
                         logEntry("Acquiring wake-lock", true);
@@ -381,7 +366,7 @@ public class AlertService extends Service {
                 false,
                 TAG
         );
-         useProximitySensor = getBoolean(
+        useProximitySensor = getBoolean(
                 sharedPreferences,
                 TRIGGER_PROXIMITY_KEY,
                 true,
@@ -399,6 +384,12 @@ public class AlertService extends Service {
                 true,
                 TAG
         );
+
+        ringtoneURI = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+        if (sharedPreferences.contains("ringtone")) {
+            ringtoneURI = Uri.parse(sharedPreferences.getString("ringtone", ""));
+        }
+        ;
 
         calculateSleepInterval();
     }
@@ -465,7 +456,7 @@ public class AlertService extends Service {
                 String setting = sharedPreferences.getString(preferenceKey, "");
                 if (!setting.isEmpty()) {
                     value = NumberFormat.getInstance().parse(setting).doubleValue();
-                    LogD(tag, String.format("Configuration string %s converted to Double %.3f", setting , value));
+                    LogD(tag, String.format("Configuration string %s converted to Double %.3f", setting, value));
                 }
             }
         } catch (Exception e) {
@@ -481,7 +472,7 @@ public class AlertService extends Service {
                 String setting = sharedPreferences.getString(preferenceKey, "");
                 if (!setting.isEmpty()) {
                     value = NumberFormat.getInstance().parse(setting).floatValue();
-                    LogD(tag, String.format("Configuration string %s converted to Float %.3f", setting , value));
+                    LogD(tag, String.format("Configuration string %s converted to Float %.3f", setting, value));
                 }
             }
         } catch (Exception e) {
@@ -664,25 +655,23 @@ public class AlertService extends Service {
 
     // This piece of code is now required if you want it to run on Oreo.
     // https://developer.android.com/training/notify-user/build-notification.html#Priority
+    // Notice that we are not using the channel for sound alarms. This is, as far as I remember,
+    // just to have it work.
     private void createNotificationChannel() {
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             CharSequence name = getString(R.string.channel_name);
             String description = getString(R.string.channel_description);
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_LOW);
             channel.setDescription(description);
             channel.enableLights(false);
             channel.enableVibration(false);
-            channel.setImportance(NotificationManager.IMPORTANCE_LOW);
-            channel.setSound(null,     new AudioAttributes.Builder().setUsage(
-                    AudioAttributes.USAGE_ALARM).build());
+            channel.setSound(null, null);
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
-
         }
     }
 
@@ -694,8 +683,6 @@ public class AlertService extends Service {
         return days;
 
     }
-
-
 
 
 }
