@@ -141,7 +141,8 @@ public class AlertService extends Service {
                         }
                     }
                 } else {
-                    delay = Math.round(interval / 6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
+                    //delay = Math.round(interval / 6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
+                    delay = 1000*60*5;
                 }
                 if (delay > millis) {
                     delay = millis;
@@ -154,7 +155,8 @@ public class AlertService extends Service {
                 logEntry("Sleep time", false);
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
-                delay = Math.round(interval / 6);
+                //delay = Math.round(interval / 6);
+                delay = 1000*60*5;
                 //resetTimer(interval + sleepDelay);
             }
 
@@ -667,7 +669,8 @@ public class AlertService extends Service {
             channel.setDescription(description);
             channel.enableLights(false);
             channel.enableVibration(false);
-            channel.setSound(null, null);
+            Uri ringtoneURI = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            channel.setSound(ringtoneURI, null);
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
