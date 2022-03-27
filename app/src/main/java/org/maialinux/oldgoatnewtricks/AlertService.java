@@ -38,6 +38,7 @@ import org.joda.time.format.PeriodFormatter;
 import org.joda.time.format.PeriodFormatterBuilder;
 
 import java.text.NumberFormat;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
@@ -142,7 +143,7 @@ public class AlertService extends Service {
                     }
                 } else {
                     //delay = Math.round(interval / 6); // 1Hour => 10 minutes, 2 Hour => 20 minutes... seems reasonable
-                    delay = 1000*60*5;
+                    delay = 1000 * 60 * 5;
                 }
                 if (delay > millis) {
                     delay = millis;
@@ -156,7 +157,7 @@ public class AlertService extends Service {
                 logEntry(String.format("Sleeping for %s seconds", String.valueOf(sleepDelay / 1000)), false);
                 stopServices();
                 //delay = Math.round(interval / 6);
-                delay = 1000*60*5;
+                delay = 1000 * 60 * 5;
                 //resetTimer(interval + sleepDelay);
             }
 
@@ -503,10 +504,38 @@ public class AlertService extends Service {
 
 
     private void sendSMS(String phoneNumber, String message) {
+
         if (!phoneNumber.isEmpty() && !message.isEmpty()) {
-            SmsManager sms = SmsManager.getDefault();
-            sms.sendTextMessage(phoneNumber, null, message, null, null);
-            logEntry("SMS sent", true);
+            try {
+                SmsManager sm = SmsManager.getDefault();
+                ArrayList<String> parts = sm.divideMessage(message);
+                final int count = parts.size();
+                ArrayList<PendingIntent> sentPis = new ArrayList<>(count);
+                ArrayList<PendingIntent> delPis = new ArrayList<>(count);
+                for (int i = 0; i < count; i++) {
+                    Intent iSent = new Intent("SMS_SENT")
+                            .putExtra("msg_part", i);
+                    PendingIntent piSent = PendingIntent.getBroadcast(this,
+                            i,
+                            iSent,
+                            PendingIntent.FLAG_ONE_SHOT);
+                    sentPis.add(piSent);
+
+                    Intent iDel = new Intent("SMS_DELIVERED")
+                            .putExtra("msg_part", i);
+                    PendingIntent piDel = PendingIntent.getBroadcast(this,
+                            i,
+                            iDel,
+                            PendingIntent.FLAG_ONE_SHOT);
+                    delPis.add(piDel);
+                }
+
+                sm.sendMultipartTextMessage(phoneNumber, null, parts, sentPis, delPis);
+                //sm.sendTextMessage(phoneNumber, null, message, null, null);
+                logEntry("SMS sent", true);
+            } catch (Exception e) {
+                logEntry(e.getMessage(), false);
+            }
             smsSent++;
         }
 
